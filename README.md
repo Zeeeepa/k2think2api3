@@ -94,6 +94,7 @@ curl http://localhost:8001/v1/models \
 |--------|--------|------|
 | `VALID_API_KEY` | `sk-k2think` | API 访问密钥 |
 | `K2THINK_TOKEN` | - | K2Think 服务 JWT Token |
+| `OUTPUT_THINKING` | `true` | 是否输出思考过程 |
 | `HOST` | `0.0.0.0` | 服务监听地址 |
 | `PORT` | `8001` | 服务端口 |
 
@@ -148,7 +149,7 @@ K2-Think 模型具有以下特点：
 
 1. **Token 过期**
    - 更新 `.env` 文件中的 `K2THINK_TOKEN`
-   - 从 K2Think 网站获取新的 JWT Token
+   - 从[K2Think](https://www.k2think.ai/  "访问K2Think官网")网站获取新的 JWT Token[]
 
 2. **端口冲突**
    - 修改 `PORT` 环境变量

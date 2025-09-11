@@ -84,7 +84,7 @@ app.add_middleware(
 VALID_API_KEY = os.getenv("VALID_API_KEY", "sk-k2think")
 K2THINK_API_URL = os.getenv("K2THINK_API_URL", "https://www.k2think.ai/api/chat/completions")
 K2THINK_TOKEN = os.getenv("K2THINK_TOKEN")
-
+OUTPUT_THINKING = os.getenv("OUTPUT_THINKING", "true").lower() == "true"
 
 def validate_api_key(authorization: str) -> bool:
     """验证API密钥"""
@@ -127,18 +127,33 @@ def extract_answer_content(full_content: str) -> str:
     """删除第一个<answer>标签和最后一个</answer>标签，保留内容"""
     if not full_content:
         return full_content
+    if OUTPUT_THINKING:
+        # 删除第一个<answer>
+        answer_start = full_content.find('<answer>')
+        if answer_start != -1:
+            full_content = full_content[:answer_start] + full_content[answer_start + 8:]
 
-    # 删除第一个<answer>
-    answer_start = full_content.find('<answer>')
-    if answer_start != -1:
-        full_content = full_content[:answer_start] + full_content[answer_start + 8:]
+        # 删除最后一个</answer>
+        answer_end = full_content.rfind('</answer>')
+        if answer_end != -1:
+            full_content = full_content[:answer_end] + full_content[answer_end + 9:]
 
-    # 删除最后一个</answer>
-    answer_end = full_content.rfind('</answer>')
-    if answer_end != -1:
-        full_content = full_content[:answer_end] + full_content[answer_end + 9:]
+        return full_content.strip()
+    else:
+        # 删除<think>部分（包括标签）
+        think_start = full_content.find('<think>')
+        think_end = full_content.find('</think>')
+        if think_start != -1 and think_end != -1:
+            full_content = full_content[:think_start] + full_content[think_end + 8:]
+        
+        # 删除<answer>标签及其内容之外的部分
+        answer_start = full_content.find('<answer>')
+        answer_end = full_content.rfind('</answer>')
+        if answer_start != -1 and answer_end != -1:
+            content = full_content[answer_start + 8:answer_end]
+            return content.strip()
 
-    return full_content.strip()
+        return full_content.strip()
 
 async def make_request(method: str, url: str, headers: dict, json_data: dict = None, 
                       stream: bool = False) -> httpx.Response:
