@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  k2think-api:
+    build: .
+    container_name: k2think-api
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env  # 使用.env文件加载环境变量
+    environment:
+      # 可以在这里覆盖.env文件中的变量，或添加额外的环境变量
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/', timeout=10)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
