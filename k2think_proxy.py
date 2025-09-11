@@ -31,6 +31,7 @@ MAX_CONNECTIONS = int(os.getenv("MAX_CONNECTIONS", "100"))
 DEBUG_LOGGING = os.getenv("DEBUG_LOGGING", "false").lower() == "true"
 STREAM_DELAY = float(os.getenv("STREAM_DELAY", "0.05"))
 STREAM_CHUNK_SIZE = int(os.getenv("STREAM_CHUNK_SIZE", "50"))
+MAX_STREAM_TIME = float(os.getenv("MAX_STREAM_TIME", "10.0"))  # 最大流式输出时间（秒）
 ENABLE_ACCESS_LOG = os.getenv("ENABLE_ACCESS_LOG", "true").lower() == "true"
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",") if os.getenv("CORS_ORIGINS", "*") != "*" else ["*"]
 
@@ -188,6 +189,40 @@ def extract_answer_content(full_content: str) -> str:
             return content.strip()
 
         return full_content.strip()
+
+def calculate_dynamic_chunk_size(content_length: int) -> int:
+    """
+    动态计算流式输出的chunk大小
+    确保总输出时间不超过MAX_STREAM_TIME秒
+    
+    Args:
+        content_length: 待输出内容的总长度
+    
+    Returns:
+        int: 动态计算的chunk大小，最小为50
+    """
+    if content_length <= 0:
+        return STREAM_CHUNK_SIZE
+    
+    # 计算需要的总chunk数量以满足时间限制
+    # 总时间 = chunk数量 * STREAM_DELAY
+    # chunk数量 = content_length / chunk_size
+    # 所以：总时间 = (content_length / chunk_size) * STREAM_DELAY
+    # 解出：chunk_size = (content_length * STREAM_DELAY) / MAX_STREAM_TIME
+    
+    calculated_chunk_size = int((content_length * STREAM_DELAY) / MAX_STREAM_TIME)
+    
+    # 确保chunk_size不小于最小值50
+    min_chunk_size = 50
+    dynamic_chunk_size = max(calculated_chunk_size, min_chunk_size)
+    
+    # 如果计算出的chunk_size太大（比如内容很短），使用默认值
+    if dynamic_chunk_size > content_length:
+        dynamic_chunk_size = min(STREAM_CHUNK_SIZE, content_length)
+    
+    logger.debug(f"动态chunk_size计算: 内容长度={content_length}, 计算值={calculated_chunk_size}, 最终值={dynamic_chunk_size}")
+    
+    return dynamic_chunk_size
 
 def content_to_string(content) -> str:
     """Convert content from various formats to string"""
@@ -678,9 +713,9 @@ async def process_stream_response(k2think_payload: dict, headers: dict) -> Async
         }
         yield f"data: {json.dumps(start_chunk)}\n\n"
         
-        # 模拟流式输出 - 按字符分块发送
+        # 模拟流式输出 - 按字符分块发送，使用动态chunk_size
         
-        chunk_size = STREAM_CHUNK_SIZE  # 每次发送n个字符
+        chunk_size = calculate_dynamic_chunk_size(len(full_content))  # 动态计算每次发送的字符数
         
         for i in range(0, len(full_content), chunk_size):
             chunk_content = full_content[i:i + chunk_size]
@@ -805,8 +840,8 @@ async def process_stream_response_with_tools(k2think_payload: dict, headers: dic
                 # Send regular content with true streaming feel
                 trimmed_content = remove_tool_json_content(full_content)
                 if trimmed_content:
-                    # 快速流式输出 - 合理的块大小
-                    chunk_size = STREAM_CHUNK_SIZE  # 每次发送n个字符，保持流式感觉但速度快
+                    # 快速流式输出 - 动态计算块大小
+                    chunk_size = calculate_dynamic_chunk_size(len(trimmed_content))  # 动态计算每次发送的字符数
                     
                     for i in range(0, len(trimmed_content), chunk_size):
                         chunk_content = trimmed_content[i:i + chunk_size]
@@ -827,10 +862,10 @@ async def process_stream_response_with_tools(k2think_payload: dict, headers: dic
                         
                         yield f"data: {json.dumps(chunk)}\n\n"
                         # 添加极小延迟确保块分别发送
-                        await asyncio.sleep(STREAM_DELAY/2)  # 毫秒延迟
+                        await asyncio.sleep(STREAM_DELAY)  # 毫秒延迟
         else:
             # No tools - send regular content with fast streaming
-            chunk_size = STREAM_CHUNK_SIZE  # 每次发送n个字符，保持流式感觉但速度快
+            chunk_size = calculate_dynamic_chunk_size(len(full_content))  # 动态计算每次发送的字符数
             
             for i in range(0, len(full_content), chunk_size):
                 chunk_content = full_content[i:i + chunk_size]
@@ -851,7 +886,7 @@ async def process_stream_response_with_tools(k2think_payload: dict, headers: dic
                 
                 yield f"data: {json.dumps(chunk)}\n\n"
                 # 添加极小延迟确保块分别发送
-                await asyncio.sleep(STREAM_DELAY/2)  # 毫秒延迟
+                await asyncio.sleep(STREAM_DELAY)  # 毫秒延迟
         
         # 发送结束chunk
         end_chunk = {
