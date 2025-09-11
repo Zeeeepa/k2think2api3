@@ -292,7 +292,7 @@ async def process_stream_response(k2think_payload: dict, headers: dict) -> Async
         
         # 模拟流式输出 - 按字符分块发送
         
-        chunk_size = 500  # 每次发送10个字符
+        chunk_size = 50  # 每次发送n个字符
         
         for i in range(0, len(full_content), chunk_size):
             chunk_content = full_content[i:i + chunk_size]
