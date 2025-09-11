@@ -19,8 +19,6 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = ""
-
 # 数据模型
 class Message(BaseModel):
     role: str
@@ -126,25 +124,21 @@ def get_current_datetime_info():
     }
 
 def extract_answer_content(full_content: str) -> str:
-    """保留<think>内容，去除<answer>标签但保留其内容"""
+    """删除第一个<answer>标签和最后一个</answer>标签，保留内容"""
     if not full_content:
         return full_content
-    
-    # 查找<answer>标签
+
+    # 删除第一个<answer>
     answer_start = full_content.find('<answer>')
-    answer_end = full_content.find('</answer>')
-    
-    if answer_start != -1 and answer_end != -1:
-        # 提取各部分
-        before_answer = full_content[:answer_start]  # <think>内容等
-        answer_content = full_content[answer_start + 8:answer_end]  # 答案内容
-        after_answer = full_content[answer_end + 9:]  # </answer>后的内容
-        
-        # 重新组合：保留前面内容 + 答案内容（无标签）+ 后面内容
-        return (before_answer + answer_content + after_answer).strip()
-    
-    # 如果没有找到<answer>标签，返回原内容
-    return full_content
+    if answer_start != -1:
+        full_content = full_content[:answer_start] + full_content[answer_start + 8:]
+
+    # 删除最后一个</answer>
+    answer_end = full_content.rfind('</answer>')
+    if answer_end != -1:
+        full_content = full_content[:answer_end] + full_content[answer_end + 9:]
+
+    return full_content.strip()
 
 async def make_request(method: str, url: str, headers: dict, json_data: dict = None, 
                       stream: bool = False) -> httpx.Response:
@@ -195,10 +189,6 @@ async def health_check():
 async def favicon():
     """返回favicon"""
     return Response(content="", media_type="image/x-icon")
-
-# 原HTML内容已删除，保持简洁的JSON响应
-# 删除的内容包括：完整的HTML页面模板
-# 现在首页只返回简洁的JSON状态信息
 
 @app.get("/v1/models")
 async def get_models() -> ModelsResponse:
