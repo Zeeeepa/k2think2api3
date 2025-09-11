@@ -1,1 +1,9 @@
+__pycache__/
+工具调用参考/
+test/
+
+.vscode/
+
 .env
+*.pyc
+*.log
