@@ -17,7 +17,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 配置
-VALID_API_KEY = os.getenv("VALID_API_KEY", "sk-k2think")
+VALID_API_KEY = os.getenv("VALID_API_KEY")
+if not VALID_API_KEY:
+    raise ValueError("错误：VALID_API_KEY 环境变量未设置。请在 .env 文件中提供一个安全的API密钥。")
 K2THINK_API_URL = os.getenv("K2THINK_API_URL", "https://www.k2think.ai/api/chat/completions")
 K2THINK_TOKEN = os.getenv("K2THINK_TOKEN")
 OUTPUT_THINKING = os.getenv("OUTPUT_THINKING", "true").lower() == "true"
@@ -625,22 +627,6 @@ async def get_models() -> ModelsResponse:
     )
     return ModelsResponse(data=[model_info])
 
-
-@app.get("/favicon.ico")
-async def favicon():
-    """返回favicon"""
-    return Response(content="", media_type="image/x-icon")
-
-@app.get("/v1/models")
-async def get_models() -> ModelsResponse:
-    """获取模型列表"""
-    model_info = ModelInfo(
-        id="MBZUAI-IFM/K2-Think",
-        created=int(time.time()),
-        owned_by="MBZUAI",
-        root="mbzuai-k2-think-2508"
-    )
-    return ModelsResponse(data=[model_info])
 
 async def process_non_stream_response(k2think_payload: dict, headers: dict) -> tuple[str, dict]:
     """处理非流式响应"""
