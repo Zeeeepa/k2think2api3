@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   k2think-api:
-    image: julienol/z-ai2api-pythonk2think2api:latest
+    image: julienol/k2think2api:latest
     container_name: k2think-api
     ports:
       - "${HOST_PORT:-8001}:8001"

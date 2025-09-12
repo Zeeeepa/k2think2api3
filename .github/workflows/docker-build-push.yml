@@ -23,7 +23,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: julienol/z-ai2api-pythonk2think2api
+  IMAGE_NAME: julienol/k2think2api
 
 jobs:
   build-and-push:

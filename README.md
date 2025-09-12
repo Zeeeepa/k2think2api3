@@ -8,8 +8,7 @@
 - 🔄 **OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝对接现有应用
 - ⚡ **流式响应**: 支持实时流式聊天响应，支持是否输出thinking
 - 🛠️ **工具调用**: 支持 OpenAI Function Calling，可集成外部工具和API
-- 📊 **文件上传**: 支持 文件、图像上传
-- 🛡️ **直连访问**: 直接连接 K2Think API，无需代理配置
+- 📊 **文件上传**: 支持文件、图像上传
 - 🚀 **高性能**: 异步处理架构，支持高并发请求
 - 🐳 **容器化**: 支持 Docker 部署
 
@@ -40,15 +39,21 @@ python k2think_proxy.py
 
 ### Docker 部署
 
+#### 构建镜像部署
+
 1. **构建镜像**
 
 ```bash
+# 构建镜像 
 docker build -t k2think-api .
 ```
 
 2. **运行容器**
 
 ```bash
+# 先创建 .env 文件,然后编辑 .env 文件配置
+cp .env.example .env
+# 运行容器
 docker run -d \
   --name k2think-api \
   -p 8001:8001 \
@@ -57,7 +62,9 @@ docker run -d \
   k2think-api
 ```
 
-3. **使用 docker-compose**
+#### docker-compose部署
+
+3. **或者直接使用 docker-compose**
 
 ```bash
 # 先创建 .env 文件
@@ -261,10 +268,10 @@ if response.choices[0].message.tool_calls:
         function_args = tool_call.function.arguments
         print(f"调用工具: {function_name}")
         print(f"参数: {function_args}")
-    
+  
         # 在这里执行实际的工具调用
         # tool_result = execute_tool(function_name, function_args)
-    
+  
         # 继续对话，将工具结果返回给模型
         # ...
 ```
