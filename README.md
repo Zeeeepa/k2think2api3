@@ -6,7 +6,7 @@
 
 - 🧠 **MBZUAI K2-Think 模型**: 支持 MBZUAI 开发的 K2-Think 推理模型
 - 🔄 **OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝对接现有应用
-- ⚡ **流式响应**: 支持实时流式聊天响应
+- ⚡ **流式响应**: 支持实时流式聊天响应，支持是否输出thinking
 - 🛠️ **工具调用**: 支持 OpenAI Function Calling，可集成外部工具和API
 - 📊 **文件上传**: 支持 文件、图像上传
 - 🛡️ **直连访问**: 直接连接 K2Think API，无需代理配置
@@ -98,15 +98,14 @@ curl http://localhost:8001/v1/models \
 
 ## 环境变量配置
 
-| 变量名              | 默认值         | 说明                       |
-| ------------------- | -------------- | -------------------------- |
-| `VALID_API_KEY`   | `sk-k2think` | API 访问密钥               |
-| `K2THINK_TOKEN`   | -              | K2Think 服务 JWT Token     |
-| `OUTPUT_THINKING` | `true`       | 是否输出思考过程           |
-| `TOOL_SUPPORT`    | `true`       | 是否启用工具调用功能       |
-| `SCAN_LIMIT`      | `200000`     | 工具调用扫描的文本长度限制 |
-| `HOST`            | `0.0.0.0`    | 服务监听地址               |
-| `PORT`            | `8001`       | 服务端口                   |
+| 变量名            | 默认值         | 说明                       |
+| ----------------- | -------------- | -------------------------- |
+| `VALID_API_KEY` | `sk-k2think` | API 访问密钥               |
+| `K2THINK_TOKEN` | -              | K2Think 服务 JWT Token     |
+| `TOOL_SUPPORT`  | `true`       | 是否启用工具调用功能       |
+| `SCAN_LIMIT`    | `200000`     | 工具调用扫描的文本长度限制 |
+| `HOST`          | `0.0.0.0`    | 服务监听地址               |
+| `PORT`          | `8001`       | 服务端口                   |
 
 ## Python SDK 使用示例
 
@@ -262,10 +261,10 @@ if response.choices[0].message.tool_calls:
         function_args = tool_call.function.arguments
         print(f"调用工具: {function_name}")
         print(f"参数: {function_args}")
-      
+    
         # 在这里执行实际的工具调用
         # tool_result = execute_tool(function_name, function_args)
-      
+    
         # 继续对话，将工具结果返回给模型
         # ...
 ```
