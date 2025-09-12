@@ -52,10 +52,16 @@ else:
 logger = logging.getLogger(__name__)
 
 # 数据模型
+class ImageUrl(BaseModel):
+    """Image URL model for vision content"""
+    url: str
+    detail: Optional[str] = "auto"
+
 class ContentPart(BaseModel):
     """Content part model for OpenAI's new content format"""
     type: str
     text: Optional[str] = None
+    image_url: Optional[ImageUrl] = None
 
 class Message(BaseModel):
     role: str
@@ -227,6 +233,73 @@ def calculate_dynamic_chunk_size(content_length: int) -> int:
     
     return dynamic_chunk_size
 
+def content_to_multimodal(content) -> Union[str, List[Dict]]:
+    """Convert content to multimodal format for K2Think API"""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # 检查是否包含图像内容
+        has_image = False
+        result_parts = []
+        
+        for p in content:
+            if hasattr(p, 'type'):  # ContentPart object
+                if getattr(p, 'type') == "text" and getattr(p, 'text', None):
+                    result_parts.append({
+                        "type": "text",
+                        "text": getattr(p, 'text')
+                    })
+                elif getattr(p, 'type') == "image_url" and getattr(p, 'image_url', None):
+                    has_image = True
+                    image_url_obj = getattr(p, 'image_url')
+                    if hasattr(image_url_obj, 'url'):
+                        url = getattr(image_url_obj, 'url')
+                    else:
+                        url = image_url_obj.get('url') if isinstance(image_url_obj, dict) else str(image_url_obj)
+                    
+                    result_parts.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": url
+                        }
+                    })
+            elif isinstance(p, dict):
+                if p.get("type") == "text" and p.get("text"):
+                    result_parts.append({
+                        "type": "text", 
+                        "text": p.get("text")
+                    })
+                elif p.get("type") == "image_url" and p.get("image_url"):
+                    has_image = True
+                    result_parts.append({
+                        "type": "image_url",
+                        "image_url": p.get("image_url")
+                    })
+            elif isinstance(p, str):
+                result_parts.append({
+                    "type": "text",
+                    "text": p
+                })
+        
+        # 如果包含图像，返回多模态格式；否则返回纯文本
+        if has_image and result_parts:
+            return result_parts
+        else:
+            # 提取所有文本内容
+            text_parts = []
+            for part in result_parts:
+                if part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+            return " ".join(text_parts)
+    
+    # 处理其他类型
+    try:
+        return str(content)
+    except:
+        return ""
+
 def content_to_string(content) -> str:
     """Convert content from various formats to string"""
     if content is None:
@@ -237,9 +310,14 @@ def content_to_string(content) -> str:
         parts = []
         for p in content:
             if hasattr(p, 'text'):  # ContentPart object
-                parts.append(getattr(p, 'text', ''))
-            elif isinstance(p, dict) and p.get("type") == "text":
-                parts.append(p.get("text", ""))
+                if getattr(p, 'text', None):
+                    parts.append(getattr(p, 'text', ''))
+            elif isinstance(p, dict):
+                if p.get("type") == "text":
+                    parts.append(p.get("text", ""))
+                elif p.get("type") == "image_url":
+                    # 处理图像内容，添加描述性文本
+                    parts.append("[图像内容]")
             elif isinstance(p, str):
                 parts.append(p)
             else:
@@ -247,7 +325,9 @@ def content_to_string(content) -> str:
                 try:
                     if hasattr(p, '__dict__'):
                         # 如果是对象，尝试获取text属性或转换为字符串
-                        parts.append(str(getattr(p, 'text', str(p))))
+                        text_attr = getattr(p, 'text', None)
+                        if text_attr:
+                            parts.append(str(text_attr))
                     else:
                         parts.append(str(p))
                 except:
@@ -923,14 +1003,13 @@ async def chat_completions(request: ChatCompletionRequest, auth_request: Request
         )
     
     try:
-        # Process messages with tools - 确保内容被正确转换为字符串
+        # Process messages - 保持原始内容格式以支持多模态
         raw_messages = []
         for msg in request.messages:
             try:
-                content = content_to_string(msg.content)
                 raw_messages.append({
                     "role": msg.role, 
-                    "content": content, 
+                    "content": msg.content,  # 保持原始格式，稍后再转换
                     "tool_calls": msg.tool_calls
                 })
             except Exception as e:
@@ -976,12 +1055,12 @@ async def chat_completions(request: ChatCompletionRequest, auth_request: Request
             processed_messages = raw_messages
             logger.info("⏭️  无工具调用，直接使用原始消息")
         
-        # 构建 K2Think 格式的请求体 - 确保所有内容可JSON序列化
+        # 构建 K2Think 格式的请求体 - 支持多模态内容
         k2think_messages = []
         for msg in processed_messages:
             try:
-                # 确保消息内容是字符串
-                content = content_to_string(msg.get("content", ""))
+                # 使用多模态内容转换函数
+                content = content_to_multimodal(msg.get("content", ""))
                 k2think_messages.append({
                     "role": msg["role"], 
                     "content": content
@@ -989,9 +1068,10 @@ async def chat_completions(request: ChatCompletionRequest, auth_request: Request
             except Exception as e:
                 logger.error(f"构建K2Think消息时出错: {e}, 消息: {msg}")
                 # 使用安全的默认值
+                fallback_content = content_to_string(msg.get("content", ""))
                 k2think_messages.append({
                     "role": msg.get("role", "user"), 
-                    "content": str(msg.get("content", ""))
+                    "content": fallback_content
                 })
         
         k2think_payload = {

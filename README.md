@@ -8,6 +8,7 @@
 - 🔄 **OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝对接现有应用
 - ⚡ **流式响应**: 支持实时流式聊天响应
 - 🛠️ **工具调用**: 支持 OpenAI Function Calling，可集成外部工具和API
+- 📊 **文件上传**: 支持 文件、图像上传
 - 🛡️ **直连访问**: 直接连接 K2Think API，无需代理配置
 - 🚀 **高性能**: 异步处理架构，支持高并发请求
 - 🐳 **容器化**: 支持 Docker 部署
@@ -17,17 +18,20 @@
 ### 本地运行
 
 1. **安装依赖**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 2. **配置环境变量**
+
 ```bash
 cp .env.example .env
 # 编辑 .env 文件，配置你的 K2Think Token
 ```
 
 3. **启动服务**
+
 ```bash
 python k2think_proxy.py
 ```
@@ -37,11 +41,13 @@ python k2think_proxy.py
 ### Docker 部署
 
 1. **构建镜像**
+
 ```bash
 docker build -t k2think-api .
 ```
 
 2. **运行容器**
+
 ```bash
 docker run -d \
   --name k2think-api \
@@ -52,6 +58,7 @@ docker run -d \
 ```
 
 3. **使用 docker-compose**
+
 ```bash
 # 先创建 .env 文件
 cp .env.example .env
@@ -91,15 +98,15 @@ curl http://localhost:8001/v1/models \
 
 ## 环境变量配置
 
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `VALID_API_KEY` | `sk-k2think` | API 访问密钥 |
-| `K2THINK_TOKEN` | - | K2Think 服务 JWT Token |
-| `OUTPUT_THINKING` | `true` | 是否输出思考过程 |
-| `TOOL_SUPPORT` | `true` | 是否启用工具调用功能 |
-| `SCAN_LIMIT` | `200000` | 工具调用扫描的文本长度限制 |
-| `HOST` | `0.0.0.0` | 服务监听地址 |
-| `PORT` | `8001` | 服务端口 |
+| 变量名              | 默认值         | 说明                       |
+| ------------------- | -------------- | -------------------------- |
+| `VALID_API_KEY`   | `sk-k2think` | API 访问密钥               |
+| `K2THINK_TOKEN`   | -              | K2Think 服务 JWT Token     |
+| `OUTPUT_THINKING` | `true`       | 是否输出思考过程           |
+| `TOOL_SUPPORT`    | `true`       | 是否启用工具调用功能       |
+| `SCAN_LIMIT`      | `200000`     | 工具调用扫描的文本长度限制 |
+| `HOST`            | `0.0.0.0`    | 服务监听地址               |
+| `PORT`            | `8001`       | 服务端口                   |
 
 ## Python SDK 使用示例
 
@@ -151,10 +158,11 @@ K2-Think 模型具有以下特点：
 ### 常见问题
 
 1. **Token 过期**
-   - 更新 `.env` 文件中的 `K2THINK_TOKEN`
-   - 从[K2Think](https://www.k2think.ai/  "访问K2Think官网")网站获取新的 JWT Token[]
 
+   - 更新 `.env` 文件中的 `K2THINK_TOKEN`
+   - 从[K2Think](https://www.k2think.ai/ "访问K2Think官网")网站获取新的 JWT Token[]
 2. **端口冲突**
+
    - 修改 `PORT` 环境变量
    - 或使用 Docker 端口映射
 
@@ -196,10 +204,10 @@ python check_config_simple.py --example
 
 ### 配置变量说明
 
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `TOOL_SUPPORT` | `true` | 是否启用工具调用功能 |
-| `SCAN_LIMIT` | `200000` | 工具调用扫描的文本长度限制 |
+| 变量名           | 默认值     | 说明                       |
+| ---------------- | ---------- | -------------------------- |
+| `TOOL_SUPPORT` | `true`   | 是否启用工具调用功能       |
+| `SCAN_LIMIT`   | `200000` | 工具调用扫描的文本长度限制 |
 
 ### 使用示例
 
@@ -254,10 +262,10 @@ if response.choices[0].message.tool_calls:
         function_args = tool_call.function.arguments
         print(f"调用工具: {function_name}")
         print(f"参数: {function_args}")
-        
+      
         # 在这里执行实际的工具调用
         # tool_result = execute_tool(function_name, function_args)
-        
+      
         # 继续对话，将工具结果返回给模型
         # ...
 ```
@@ -282,6 +290,7 @@ python tool_example.py
 ```
 
 测试套件包含：
+
 - 🧪 基础功能和调试测试
 - 🛠️ 完整工具调用功能测试
 - 📝 ContentPart 序列化问题测试
