@@ -23,6 +23,7 @@ K2THINK_TOKEN = os.getenv("K2THINK_TOKEN")
 OUTPUT_THINKING = os.getenv("OUTPUT_THINKING", "true").lower() == "true"
 TOOL_SUPPORT = os.getenv("TOOL_SUPPORT", "true").lower() == "true"
 SCAN_LIMIT = int(os.getenv("SCAN_LIMIT", "200000"))
+SYSTEM_MESSAGE_LENTH = int(os.getenv("SYSTEM_MESSAGE_LENTH", "200000"))
 
 # 高级配置
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "60"))
@@ -324,7 +325,7 @@ def process_messages_with_tools(messages: List[Dict], tools: Optional[List[Dict]
                 content = content_to_string(mm.get("content", ""))
                 # 确保系统消息不会过长
                 new_content = content + tools_prompt
-                if len(new_content) > 2000:
+                if len(new_content) > SYSTEM_MESSAGE_LENTH:
                     logger.warning(f"系统消息过长 ({len(new_content)} 字符)，使用简化版本")
                     mm["content"] = "你是一个有用的助手。" + tools_prompt
                 else:
