@@ -28,8 +28,6 @@ class ToolHandler:
     
     def __init__(self, config):
         self.config = config
-        self.scan_limit = config.SCAN_LIMIT
-        self.system_message_length = config.SYSTEM_MESSAGE_LENGTH
         self.tool_support = config.TOOL_SUPPORT
     
     def generate_tool_prompt(self, tools: List[Dict]) -> str:
@@ -103,13 +101,9 @@ class ToolHandler:
                 if m.get("role") == "system":
                     mm = dict(m)
                     content = self._content_to_string(mm.get("content", ""))
-                    # 确保系统消息不会过长
+                    # 不限制系统消息长度
                     new_content = content + tools_prompt
-                    if len(new_content) > self.system_message_length:
-                        logger.warning(LogMessages.SYSTEM_MESSAGE_TOO_LONG.format(len(new_content)))
-                        mm["content"] = "你是一个有用的助手。" + tools_prompt
-                    else:
-                        mm["content"] = new_content
+                    mm["content"] = new_content
                     processed.append(mm)
                     # 只在第一个系统消息中添加工具提示
                     tools_prompt = ""
@@ -169,8 +163,8 @@ class ToolHandler:
         if not text:
             return None
 
-        # 限制扫描大小以提高性能
-        scannable_text = text[:self.scan_limit]
+        # 使用全文扫描，不限制长度
+        scannable_text = text
 
         # 尝试1：从JSON代码块中提取
         json_blocks = self.TOOL_CALL_FENCE_PATTERN.findall(scannable_text)

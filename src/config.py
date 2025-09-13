@@ -28,8 +28,6 @@ class Config:
     ENABLE_ACCESS_LOG: bool = os.getenv("ENABLE_ACCESS_LOG", "true").lower() == "true"
     
     # 性能配置
-    SCAN_LIMIT: int = int(os.getenv("SCAN_LIMIT", "200000"))
-    SYSTEM_MESSAGE_LENGTH: int = int(os.getenv("SYSTEM_MESSAGE_LENTH", "200000"))
     REQUEST_TIMEOUT: float = float(os.getenv("REQUEST_TIMEOUT", "60"))
     MAX_KEEPALIVE_CONNECTIONS: int = int(os.getenv("MAX_KEEPALIVE_CONNECTIONS", "20"))
     MAX_CONNECTIONS: int = int(os.getenv("MAX_CONNECTIONS", "100"))

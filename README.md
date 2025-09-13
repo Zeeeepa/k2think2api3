@@ -110,7 +110,7 @@ curl http://localhost:8001/v1/models \
 | `VALID_API_KEY` | `sk-k2think` | API 访问密钥               |
 | `K2THINK_TOKEN` | -              | K2Think 服务 JWT Token     |
 | `TOOL_SUPPORT`  | `true`       | 是否启用工具调用功能       |
-| `SCAN_LIMIT`    | `200000`     | 工具调用扫描的文本长度限制 |
+
 | `HOST`          | `0.0.0.0`    | 服务监听地址               |
 | `PORT`          | `8001`       | 服务端口                   |
 
@@ -213,7 +213,7 @@ python check_config_simple.py --example
 | 变量名           | 默认值     | 说明                       |
 | ---------------- | ---------- | -------------------------- |
 | `TOOL_SUPPORT` | `true`   | 是否启用工具调用功能       |
-| `SCAN_LIMIT`   | `200000` | 工具调用扫描的文本长度限制 |
+
 
 ### 使用示例
 
