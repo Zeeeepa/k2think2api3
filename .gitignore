@@ -1,9 +1,11 @@
 __pycache__/
 工具调用参考/
 test/
+utils/
 
 .vscode/
 
 .env
+tokens.txt
 *.pyc
 *.log

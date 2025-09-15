@@ -4,6 +4,7 @@ API处理模块
 """
 import json
 import time
+import asyncio
 import logging
 from typing import Dict, List
 from fastapi import HTTPException, Request
@@ -21,6 +22,7 @@ from src.exceptions import (
 from src.models import ChatCompletionRequest, ModelsResponse, ModelInfo
 from src.tool_handler import ToolHandler
 from src.response_processor import ResponseProcessor
+from src.token_manager import TokenManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ class APIHandler:
         self.config = config
         self.tool_handler = ToolHandler(config)
         self.response_processor = ResponseProcessor(config, self.tool_handler)
+        self.token_manager = config.get_token_manager()
     
     def validate_api_key(self, authorization: str) -> bool:
         """验证API密钥"""
@@ -98,17 +101,14 @@ class APIHandler:
             # 验证JSON序列化
             self._validate_json_serialization(k2think_payload)
             
-            # 设置请求头
-            headers = self._build_request_headers(request, k2think_payload)
-            
-            # 处理响应
+            # 处理响应（带重试机制）
             if request.stream:
-                return await self._handle_stream_response(
-                    k2think_payload, headers, has_tools, output_thinking, request.model
+                return await self._handle_stream_response_with_retry(
+                    request, k2think_payload, has_tools, output_thinking
                 )
             else:
-                return await self._handle_non_stream_response(
-                    k2think_payload, headers, has_tools, output_thinking, request.model
+                return await self._handle_non_stream_response_with_retry(
+                    request, k2think_payload, has_tools, output_thinking
                 )
                 
         except K2ThinkProxyError:
@@ -274,7 +274,7 @@ class APIHandler:
                 logger.error(f"无法修复序列化问题: {fix_error}")
                 raise SerializationError()
     
-    def _build_request_headers(self, request: ChatCompletionRequest, k2think_payload: Dict) -> Dict[str, str]:
+    def _build_request_headers(self, request: ChatCompletionRequest, k2think_payload: Dict, token: str) -> Dict[str, str]:
         """构建请求头"""
         return {
             HeaderConstants.ACCEPT: (
@@ -282,7 +282,7 @@ class APIHandler:
                 else HeaderConstants.APPLICATION_JSON
             ),
             HeaderConstants.CONTENT_TYPE: HeaderConstants.APPLICATION_JSON,
-            HeaderConstants.AUTHORIZATION: f"{APIConstants.BEARER_PREFIX}{self.config.K2THINK_TOKEN}",
+            HeaderConstants.AUTHORIZATION: f"{APIConstants.BEARER_PREFIX}{token}",
             HeaderConstants.ORIGIN: "https://www.k2think.ai",
             HeaderConstants.REFERER: "https://www.k2think.ai/c/" + k2think_payload["chat_id"],
             HeaderConstants.USER_AGENT: HeaderConstants.DEFAULT_USER_AGENT
@@ -345,3 +345,178 @@ class APIHandler:
         )
         
         return JSONResponse(content=openai_response)
+    
+    async def _handle_stream_response_with_retry(
+        self, 
+        request: ChatCompletionRequest,
+        k2think_payload: Dict, 
+        has_tools: bool,
+        output_thinking: bool = True,
+        max_retries: int = 3
+    ) -> StreamingResponse:
+        """处理流式响应（带重试机制）"""
+        last_exception = None
+        
+        for attempt in range(max_retries):
+            # 获取下一个可用token
+            token = self.token_manager.get_next_token()
+            if not token:
+                logger.error("没有可用的token")
+                raise HTTPException(
+                    status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": {
+                            "message": "所有token都已失效，请检查token配置",
+                            "type": ErrorMessages.API_ERROR
+                        }
+                    }
+                )
+            
+            # 构建请求头
+            headers = self._build_request_headers(request, k2think_payload, token)
+            
+            try:
+                logger.info(f"尝试流式请求 (第{attempt + 1}次)")
+                
+                # 使用现有的响应处理器，但在异常时标记token失败
+                async def stream_generator():
+                    try:
+                        async for chunk in self.response_processor.process_stream_response_with_tools(
+                            k2think_payload, headers, has_tools, output_thinking, request.model
+                        ):
+                            yield chunk
+                        # 流式响应成功完成，标记token成功
+                        self.token_manager.mark_token_success(token)
+                    except Exception as e:
+                        # 流式响应过程中出现错误，标记token失败
+                        self.token_manager.mark_token_failure(token, str(e))
+                        raise e
+                
+                return StreamingResponse(
+                    stream_generator(),
+                    media_type=HeaderConstants.TEXT_EVENT_STREAM,
+                    headers={
+                        HeaderConstants.CACHE_CONTROL: HeaderConstants.NO_CACHE,
+                        HeaderConstants.CONNECTION: HeaderConstants.KEEP_ALIVE,
+                        HeaderConstants.X_ACCEL_BUFFERING: HeaderConstants.NO_BUFFERING
+                    }
+                )
+            except Exception as e:
+                last_exception = e
+                logger.warning(f"流式请求失败 (第{attempt + 1}次): {e}")
+                
+                # 标记token失败
+                token_failed = self.token_manager.mark_token_failure(token, str(e))
+                if token_failed:
+                    logger.error(f"Token已被标记为失效")
+                
+                # 如果是最后一次尝试，抛出异常
+                if attempt == max_retries - 1:
+                    break
+                
+                # 短暂延迟后重试
+                await asyncio.sleep(0.5)
+        
+        # 所有重试都失败了
+        logger.error(f"所有流式请求重试都失败了，最后错误: {last_exception}")
+        raise HTTPException(
+            status_code=APIConstants.HTTP_INTERNAL_ERROR,
+            detail={
+                "error": {
+                    "message": f"流式请求失败: {str(last_exception)}",
+                    "type": ErrorMessages.API_ERROR
+                }
+            }
+        )
+    
+    async def _handle_non_stream_response_with_retry(
+        self, 
+        request: ChatCompletionRequest,
+        k2think_payload: Dict, 
+        has_tools: bool,
+        output_thinking: bool = True,
+        max_retries: int = 3
+    ) -> JSONResponse:
+        """处理非流式响应（带重试机制）"""
+        last_exception = None
+        
+        for attempt in range(max_retries):
+            # 获取下一个可用token
+            token = self.token_manager.get_next_token()
+            if not token:
+                logger.error("没有可用的token")
+                raise HTTPException(
+                    status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": {
+                            "message": "所有token都已失效，请检查token配置",
+                            "type": ErrorMessages.API_ERROR
+                        }
+                    }
+                )
+            
+            # 构建请求头
+            headers = self._build_request_headers(request, k2think_payload, token)
+            
+            try:
+                logger.info(f"尝试非流式请求 (第{attempt + 1}次)")
+                
+                # 处理响应
+                full_content, token_info = await self.response_processor.process_non_stream_response(
+                    k2think_payload, headers, output_thinking
+                )
+                
+                # 标记token成功
+                self.token_manager.mark_token_success(token)
+                
+                # 处理工具调用
+                tool_calls = None
+                message_content = full_content
+                
+                if has_tools:
+                    tool_calls = self.tool_handler.extract_tool_invocations(full_content)
+                    if tool_calls:
+                        # 当存在工具调用时，内容必须为null（OpenAI规范）
+                        message_content = None
+                        logger.info(LogMessages.TOOL_CALLS_EXTRACTED.format(
+                            json.dumps(tool_calls, ensure_ascii=False)
+                        ))
+                    else:
+                        # 从内容中移除工具JSON
+                        message_content = self.tool_handler.remove_tool_json_content(full_content)
+                        if not message_content:
+                            message_content = full_content  # 保留原内容如果清理后为空
+                
+                openai_response = self.response_processor.create_completion_response(
+                    message_content, tool_calls, token_info, request.model
+                )
+                
+                return JSONResponse(content=openai_response)
+                
+            except Exception as e:
+                last_exception = e
+                logger.warning(f"非流式请求失败 (第{attempt + 1}次): {e}")
+                
+                # 标记token失败
+                token_failed = self.token_manager.mark_token_failure(token, str(e))
+                if token_failed:
+                    logger.error(f"Token已被标记为失效")
+                
+                # 如果是最后一次尝试，抛出异常
+                if attempt == max_retries - 1:
+                    break
+                
+                # 短暂延迟后重试
+                await asyncio.sleep(0.5)
+        
+        # 所有重试都失败了
+        logger.error(f"所有非流式请求重试都失败了，最后错误: {last_exception}")
+        raise HTTPException(
+            status_code=APIConstants.HTTP_INTERNAL_ERROR,
+            detail={
+                "error": {
+                    "message": f"非流式请求失败: {str(last_exception)}",
+                    "type": ErrorMessages.API_ERROR
+                }
+            }
+        )

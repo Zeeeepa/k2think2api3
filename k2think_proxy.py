@@ -60,16 +60,31 @@ async def homepage():
         "message": "K2Think API Proxy is running",
         "service": "K2Think API Gateway", 
         "model": APIConstants.MODEL_ID,
-        "version": "2.0.0",
+        "version": "2.1.0",
+        "features": [
+            "Token轮询和负载均衡",
+            "自动失效检测和重试",
+            "Token池管理"
+        ],
         "endpoints": {
             "chat": "/v1/chat/completions",
-            "models": "/v1/models"
+            "models": "/v1/models",
+            "health": "/health",
+            "admin": {
+                "token_stats": "/admin/tokens/stats",
+                "reset_token": "/admin/tokens/reset/{token_index}",
+                "reset_all": "/admin/tokens/reset-all", 
+                "reload_tokens": "/admin/tokens/reload"
+            }
         }
     })
 
 @app.get("/health")
 async def health_check():
     """健康检查"""
+    token_manager = Config.get_token_manager()
+    token_stats = token_manager.get_token_stats()
+    
     return JSONResponse(content={
         "status": "healthy",
         "timestamp": int(time.time()),
@@ -77,6 +92,11 @@ async def health_check():
             "tool_support": Config.TOOL_SUPPORT,
             "debug_logging": Config.DEBUG_LOGGING,
             "note": "思考内容输出现在通过模型名控制"
+        },
+        "tokens": {
+            "total": token_stats["total_tokens"],
+            "active": token_stats["active_tokens"],
+            "inactive": token_stats["inactive_tokens"]
         }
     })
 
@@ -94,6 +114,66 @@ async def get_models():
 async def chat_completions(request: ChatCompletionRequest, auth_request: Request):
     """处理聊天补全请求"""
     return await api_handler.chat_completions(request, auth_request)
+
+@app.get("/admin/tokens/stats")
+async def get_token_stats():
+    """获取token池统计信息"""
+    token_manager = Config.get_token_manager()
+    stats = token_manager.get_token_stats()
+    return JSONResponse(content={
+        "status": "success",
+        "data": stats
+    })
+
+@app.post("/admin/tokens/reset/{token_index}")
+async def reset_token(token_index: int):
+    """重置指定索引的token"""
+    token_manager = Config.get_token_manager()
+    success = token_manager.reset_token(token_index)
+    if success:
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Token {token_index} 已重置"
+        })
+    else:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": f"无效的token索引: {token_index}"
+            }
+        )
+
+@app.post("/admin/tokens/reset-all")
+async def reset_all_tokens():
+    """重置所有token"""
+    token_manager = Config.get_token_manager()
+    token_manager.reset_all_tokens()
+    return JSONResponse(content={
+        "status": "success",
+        "message": "所有token已重置"
+    })
+
+@app.post("/admin/tokens/reload")
+async def reload_tokens():
+    """重新加载token文件"""
+    try:
+        Config.reload_tokens()
+        token_manager = Config.get_token_manager()
+        stats = token_manager.get_token_stats()
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Token文件已重新加载",
+            "data": stats
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"重新加载失败: {str(e)}"
+            }
+        )
 
 @app.exception_handler(K2ThinkProxyError)
 async def proxy_exception_handler(request: Request, exc: K2ThinkProxyError):

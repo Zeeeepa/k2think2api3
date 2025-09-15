@@ -6,6 +6,7 @@ import os
 import logging
 from typing import List
 from dotenv import load_dotenv
+from src.token_manager import TokenManager
 
 # 加载环境变量
 load_dotenv()
@@ -15,8 +16,15 @@ class Config:
     
     # API认证配置
     VALID_API_KEY: str = os.getenv("VALID_API_KEY", "")
-    K2THINK_TOKEN: str = os.getenv("K2THINK_TOKEN", "")
+    # 移除硬编码的K2THINK_TOKEN，使用token管理器
     K2THINK_API_URL: str = os.getenv("K2THINK_API_URL", "https://www.k2think.ai/api/chat/completions")
+    
+    # Token管理配置
+    TOKENS_FILE: str = os.getenv("TOKENS_FILE", "tokens.txt")
+    MAX_TOKEN_FAILURES: int = int(os.getenv("MAX_TOKEN_FAILURES", "3"))
+    
+    # Token管理器实例（延迟初始化）
+    _token_manager: TokenManager = None
     
     # 服务器配置
     HOST: str = os.getenv("HOST", "0.0.0.0")
@@ -51,8 +59,9 @@ class Config:
         if not cls.VALID_API_KEY:
             raise ValueError("错误：VALID_API_KEY 环境变量未设置。请在 .env 文件中提供一个安全的API密钥。")
         
-        if not cls.K2THINK_TOKEN:
-            raise ValueError("错误：K2THINK_TOKEN 环境变量未设置。请在 .env 文件中提供有效的K2Think JWT Token。")
+        # 验证token文件是否存在
+        if not os.path.exists(cls.TOKENS_FILE):
+            raise ValueError(f"错误：Token文件 {cls.TOKENS_FILE} 不存在。请确保文件存在且包含有效的token。")
         
         # 验证数值范围
         if cls.PORT < 1 or cls.PORT > 65535:
@@ -79,3 +88,19 @@ class Config:
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
+    
+    @classmethod
+    def get_token_manager(cls) -> TokenManager:
+        """获取token管理器实例（单例模式）"""
+        if cls._token_manager is None:
+            cls._token_manager = TokenManager(
+                tokens_file=cls.TOKENS_FILE,
+                max_failures=cls.MAX_TOKEN_FAILURES
+            )
+        return cls._token_manager
+    
+    @classmethod
+    def reload_tokens(cls) -> None:
+        """重新加载token"""
+        if cls._token_manager is not None:
+            cls._token_manager.reload_tokens()

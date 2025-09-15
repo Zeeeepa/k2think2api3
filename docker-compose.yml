@@ -6,8 +6,20 @@ services:
     container_name: k2think-api
     ports:
       - "${HOST_PORT:-8001}:8001"
+    volumes:
+      # 映射tokens.txt文件到容器内
+      - ./tokens.txt:/app/tokens.txt:ro
+      # 可选：如果需要动态更新tokens.txt，可以去掉:ro标记
+      # - ./tokens.txt:/app/tokens.txt
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

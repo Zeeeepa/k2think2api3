@@ -9,6 +9,9 @@
 - ⚡ **流式响应**: 支持实时流式聊天响应，支持是否输出thinking
 - 🛠️ **工具调用**: 支持 OpenAI Function Calling，可集成外部工具和API
 - 📊 **文件上传**: 支持文件、图像上传
+- 🔄 **Token轮询与负载均衡**: 支持多token轮流使用，自动故障转移
+- 🛡️ **智能失效检测**: 自动标记失效token，三次失败后自动禁用
+- 📈 **Token池管理**: 提供管理API查看状态、重置token等
 - 🚀 **高性能**: 异步处理架构，支持高并发请求
 - 🐳 **容器化**: 支持 Docker 部署
 
@@ -25,11 +28,19 @@ pip install -r requirements.txt
 2. **配置环境变量**
 
 ```bash
-cp .env.example .env
-# 编辑 .env 文件，配置你的 K2Think Token
+cp config.example .env
+# 编辑 .env 文件，配置你的API密钥和其他选项
 ```
 
-3. **启动服务**
+3. **准备Token文件**
+
+```bash
+# 复制token示例文件并编辑
+cp tokens.example.txt tokens.txt
+# 编辑tokens.txt文件，添加你的实际K2Think tokens
+```
+
+4. **启动服务**
 
 ```bash
 python k2think_proxy.py
@@ -51,14 +62,17 @@ docker build -t k2think-api .
 2. **运行容器**
 
 ```bash
-# 先创建 .env 文件,然后编辑 .env 文件配置
-cp .env.example .env
+# 先创建 .env 文件和tokens.txt，然后编辑配置
+cp config.example .env
+cp tokens.example.txt tokens.txt
+# 编辑tokens.txt添加实际的token
+
 # 运行容器
 docker run -d \
   --name k2think-api \
   -p 8001:8001 \
-  -e VALID_API_KEY="your-api-key" \
-  -e K2THINK_TOKEN="your-k2think-token" \
+  -v $(pwd)/tokens.txt:/app/tokens.txt:ro \
+  -v $(pwd)/.env:/app/.env:ro \
   k2think-api
 ```
 
@@ -67,12 +81,18 @@ docker run -d \
 3. **或者直接使用 docker-compose**
 
 ```bash
-# 先创建 .env 文件
-cp .env.example .env
-# 编辑 .env 文件配置
+# 先创建 .env 文件和tokens.txt
+cp config.example .env
+cp tokens.example.txt tokens.txt
+
+# 编辑 .env 文件配置API密钥等
+# 编辑 tokens.txt 添加实际的K2Think tokens
 
 # 启动服务
 docker-compose up -d
+
+# 检查服务状态
+docker-compose logs -f k2think-api
 ```
 
 ## API 接口
@@ -103,16 +123,50 @@ curl http://localhost:8001/v1/models \
   -H "Authorization: Bearer sk-k2think"
 ```
 
+### Token管理接口
+
+查看token池状态：
+```bash
+curl http://localhost:8001/admin/tokens/stats
+```
+
+重置指定token：
+```bash
+curl -X POST http://localhost:8001/admin/tokens/reset/0
+```
+
+重置所有token：
+```bash
+curl -X POST http://localhost:8001/admin/tokens/reset-all
+```
+
+重新加载token文件：
+```bash
+curl -X POST http://localhost:8001/admin/tokens/reload
+```
+
 ## 环境变量配置
 
+### 基础配置
 | 变量名            | 默认值         | 说明                       |
 | ----------------- | -------------- | -------------------------- |
-| `VALID_API_KEY` | `sk-k2think` | API 访问密钥               |
-| `K2THINK_TOKEN` | -              | K2Think 服务 JWT Token     |
-| `TOOL_SUPPORT`  | `true`       | 是否启用工具调用功能       |
+| `VALID_API_KEY` | 无默认值       | API 访问密钥（必需）        |
+| `K2THINK_API_URL` | https://www.k2think.ai/api/chat/completions | K2Think API端点 |
 
+### Token管理配置  
+| 变量名            | 默认值         | 说明                       |
+| ----------------- | -------------- | -------------------------- |
+| `TOKENS_FILE`   | `tokens.txt`   | Token文件路径              |
+| `MAX_TOKEN_FAILURES` | `3`         | Token最大失败次数          |
+
+### 服务器配置
+| 变量名            | 默认值         | 说明                       |
+| ----------------- | -------------- | -------------------------- |
 | `HOST`          | `0.0.0.0`    | 服务监听地址               |
 | `PORT`          | `8001`       | 服务端口                   |
+| `TOOL_SUPPORT`  | `true`       | 是否启用工具调用功能       |
+
+详细配置说明请参考 `config.example` 文件。
 
 ## Python SDK 使用示例
 
@@ -163,10 +217,11 @@ K2-Think 模型具有以下特点：
 
 ### 常见问题
 
-1. **Token 过期**
+1. **Token 相关问题**
 
-   - 更新 `.env` 文件中的 `K2THINK_TOKEN`
-   - 从[K2Think](https://www.k2think.ai/ "访问K2Think官网")网站获取新的 JWT Token[]
+   - **所有token失效**: 访问 `/admin/tokens/stats` 查看token状态，使用 `/admin/tokens/reset-all` 重置所有token
+   - **添加新token**: 编辑 `tokens.txt` 文件添加新token，然后访问 `/admin/tokens/reload` 重新加载
+   - **查看token状态**: 访问 `/health` 端点查看简要统计，或 `/admin/tokens/stats` 查看详细信息
 2. **端口冲突**
 
    - 修改 `PORT` 环境变量
@@ -178,9 +233,26 @@ K2-Think 模型具有以下特点：
 # Docker 容器日志
 docker logs k2think-api
 
+# docker-compose日志
+docker-compose logs -f k2think-api
+
 # 本地运行日志
 # 日志会直接输出到控制台
 ```
+
+### Docker部署注意事项
+
+1. **Token文件映射**
+   - `tokens.txt` 通过volume映射到容器内，支持动态更新
+   - 默认为只读映射，如果需要容器内修改请去掉`:ro`
+
+2. **健康检查**
+   - Docker容器包含健康检查机制
+   - 可通过 `docker ps` 查看健康状态
+
+3. **安全考虑**
+   - 容器以非root用户运行
+   - 敏感文件通过volume挂载而非打包到镜像中
 
 ## 工具调用功能
 
