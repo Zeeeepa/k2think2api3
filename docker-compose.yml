@@ -7,10 +7,10 @@ services:
     ports:
       - "${HOST_PORT:-8001}:8001"
     volumes:
-      # 映射tokens.txt文件到容器内
-      - ./tokens.txt:/app/tokens.txt:ro
-      # 可选：如果需要动态更新tokens.txt，可以去掉:ro标记
-      # - ./tokens.txt:/app/tokens.txt
+      # 映射tokens.txt文件到容器内（如果启用自动更新，需要去掉:ro标记）
+      - ./tokens.txt:/app/tokens.txt
+      # 映射accounts.txt文件到容器内（仅在启用自动更新时需要）
+      - ./accounts.txt:/app/accounts.txt:ro
     env_file:
       - .env
     environment:

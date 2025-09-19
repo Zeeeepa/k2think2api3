@@ -6,32 +6,71 @@ import os
 import json
 import logging
 import threading
+
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# 导入安全日志函数
+try:
+    from src.utils import safe_log_error, safe_log_info, safe_log_warning
+except ImportError:
+    # 如果导入失败，提供简单的替代函数
+    def safe_log_error(logger, msg, exc=None):
+        try:
+            if exc:
+                logger.error(f"{msg}: {str(exc)}")
+            else:
+                logger.error(msg)
+        except:
+            print(f"Log error: {msg}")
+    
+    def safe_log_info(logger, msg):
+        try:
+            logger.info(msg)
+        except:
+            print(f"Log info: {msg}")
+    
+    def safe_log_warning(logger, msg):
+        try:
+            logger.warning(msg)
+        except:
+            print(f"Log warning: {msg}")
+
 class TokenManager:
     """Token管理器 - 支持轮询、负载均衡和失效标记"""
     
-    def __init__(self, tokens_file: str = "tokens.txt", max_failures: int = 3):
+    def __init__(self, tokens_file: str = "tokens.txt", max_failures: int = 3, allow_empty: bool = False):
         """
         初始化token管理器
         
         Args:
             tokens_file: token文件路径
             max_failures: 最大失败次数，超过后标记为失效
+            allow_empty: 是否允许空的token文件（用于自动更新模式）
         """
         self.tokens_file = tokens_file
         self.max_failures = max_failures
         self.tokens: List[Dict] = []
         self.current_index = 0
         self.lock = threading.Lock()
+        self.allow_empty = allow_empty
+        
+        # 连续失效检测
+        self.consecutive_failures = 0
+        self.consecutive_failure_threshold = 2  # 连续失效阈值
+        self.force_refresh_callback = None  # 强制刷新回调函数
+        
+        # 上游服务连续报错检测
+        self.consecutive_upstream_errors = 0
+        self.upstream_error_threshold = 2  # 上游服务连续报错阈值
+        self.last_upstream_error_time = None
         
         # 加载tokens
         self.load_tokens()
         
-        if not self.tokens:
+        if not self.tokens and not allow_empty:
             raise ValueError(f"未找到有效的token，请检查文件: {tokens_file}")
     
     def load_tokens(self) -> None:
@@ -44,24 +83,28 @@ class TokenManager:
                 lines = f.readlines()
             
             self.tokens = []
-            for i, line in enumerate(lines):
+            valid_token_index = 0
+            for line in lines:
                 token = line.strip()
-                if token:  # 忽略空行
+                # 忽略空行和注释行
+                if token and not token.startswith('#'):
                     self.tokens.append({
                         'token': token,
                         'failures': 0,
                         'is_active': True,
                         'last_used': None,
                         'last_failure': None,
-                        'index': i
+                        'index': valid_token_index
                     })
+                    valid_token_index += 1
             
             logger.info(f"成功加载 {len(self.tokens)} 个token")
             
         except Exception as e:
-            logger.error(f"加载token文件失败: {e}")
+            safe_log_error(logger, "加载token文件失败", e)
             raise
     
+
     def get_next_token(self) -> Optional[str]:
         """
         获取下一个可用的token（轮询算法）
@@ -73,7 +116,10 @@ class TokenManager:
             active_tokens = [t for t in self.tokens if t['is_active']]
             
             if not active_tokens:
-                logger.warning("没有可用的token")
+                if self.allow_empty:
+                    safe_log_warning(logger, "没有可用的token，可能正在等待自动更新")
+                else:
+                    safe_log_warning(logger, "没有可用的token")
                 return None
             
             # 轮询算法：从当前索引开始寻找下一个可用token
@@ -116,8 +162,30 @@ class TokenManager:
                     token_info['failures'] += 1
                     token_info['last_failure'] = datetime.now()
                     
-                    logger.warning(f"Token失败 (索引: {token_info['index']}, "
-                                 f"失败次数: {token_info['failures']}/{self.max_failures}): {error_message}")
+                    # 检查是否是上游服务错误（401等认证错误）
+                    is_upstream_error = self._is_upstream_error(error_message)
+                    
+                    if is_upstream_error:
+                        # 增加上游服务连续报错计数
+                        self.consecutive_upstream_errors += 1
+                        self.last_upstream_error_time = datetime.now()
+                        
+                        logger.warning(f"上游服务错误 (索引: {token_info['index']}, "
+                                     f"失败次数: {token_info['failures']}/{self.max_failures}, "
+                                     f"连续上游错误: {self.consecutive_upstream_errors}): {error_message}")
+                        
+                        # 检查上游服务连续报错触发条件
+                        self._check_consecutive_upstream_errors()
+                    else:
+                        # 增加连续失效计数
+                        self.consecutive_failures += 1
+                        
+                        logger.warning(f"Token失败 (索引: {token_info['index']}, "
+                                     f"失败次数: {token_info['failures']}/{self.max_failures}, "
+                                     f"连续失效: {self.consecutive_failures}): {error_message}")
+                        
+                        # 检查连续失效触发条件
+                        self._check_consecutive_failures()
                     
                     # 检查是否达到最大失败次数
                     if token_info['failures'] >= self.max_failures:
@@ -145,6 +213,13 @@ class TokenManager:
                         logger.info(f"Token恢复 (索引: {token_info['index']}, "
                                   f"重置失败次数: {token_info['failures']} -> 0)")
                         token_info['failures'] = 0
+                    
+                    # 成功请求重置上游服务错误计数
+                    if self.consecutive_upstream_errors > 0:
+                        logger.info(f"重置上游服务连续错误计数: {self.consecutive_upstream_errors} -> 0")
+                        self.consecutive_upstream_errors = 0
+                    
+                    # 注意：不再自动重置连续失效计数，只有手动重置或强制刷新成功后才重置
                     return
     
     def get_token_stats(self) -> Dict:
@@ -229,3 +304,128 @@ class TokenManager:
             if 0 <= index < len(self.tokens):
                 return self.tokens[index].copy()
             return None
+    
+    def set_force_refresh_callback(self, callback):
+        """
+        设置强制刷新回调函数
+        
+        Args:
+            callback: 当需要强制刷新时调用的异步函数
+        """
+        self.force_refresh_callback = callback
+        logger.info("已设置强制刷新回调函数")
+    
+    def _is_upstream_error(self, error_message: str) -> bool:
+        """
+        判断是否为上游服务错误
+        
+        Args:
+            error_message: 错误信息
+            
+        Returns:
+            如果是上游服务错误返回True，否则返回False
+        """
+        # 检查常见的上游服务错误标识
+        upstream_error_indicators = [
+            "上游服务错误: 401",
+            "401",
+            "unauthorized",
+            "invalid token",
+            "authentication failed",
+            "token expired"
+        ]
+        
+        error_lower = error_message.lower()
+        return any(indicator.lower() in error_lower for indicator in upstream_error_indicators)
+    
+    def _check_consecutive_upstream_errors(self):
+        """
+        检查上游服务连续报错情况，触发强制刷新机制
+        """
+        if self.consecutive_upstream_errors >= self.upstream_error_threshold:
+            logger.warning(f"检测到连续{self.consecutive_upstream_errors}个上游服务错误，触发强制刷新机制")
+            
+            # 重置上游错误计数，避免重复触发
+            self.consecutive_upstream_errors = 0
+            
+            if self.force_refresh_callback:
+                self._trigger_force_refresh("上游服务连续报错")
+            else:
+                logger.warning("未设置强制刷新回调函数，无法自动刷新token池")
+    
+    def _check_consecutive_failures(self):
+        """
+        检查连续失效情况，触发强制刷新机制
+        """
+        # 只有在token池数量大于2时才检查连续失效
+        if len(self.tokens) <= 2:
+            logger.debug(f"Token池数量({len(self.tokens)})不足，跳过连续失效检查")
+            return
+        
+        if self.consecutive_failures >= self.consecutive_failure_threshold:
+            logger.warning(f"检测到连续{self.consecutive_failures}个token失效，触发强制刷新机制")
+            
+            if self.force_refresh_callback:
+                self._trigger_force_refresh("连续token失效")
+            else:
+                logger.warning("未设置强制刷新回调函数，无法自动刷新token池")
+    
+    def _trigger_force_refresh(self, reason: str):
+        """
+        触发强制刷新
+        
+        Args:
+            reason: 触发原因
+        """
+        try:
+            # 异步调用强制刷新
+            import asyncio
+            import threading
+            
+            def run_async_callback():
+                try:
+                    # 创建新的事件循环（如果当前线程没有）
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    # 运行强制刷新（现在是同步函数）
+                    self.force_refresh_callback()
+                    
+                    logger.info(f"强制刷新已触发 - 原因: {reason}")
+                    
+                except Exception as e:
+                    safe_log_error(logger, "执行强制刷新回调失败", e)
+            
+            # 在新线程中执行，避免阻塞当前操作
+            refresh_thread = threading.Thread(target=run_async_callback, daemon=True)
+            refresh_thread.start()
+            
+        except Exception as e:
+            safe_log_error(logger, "启动强制刷新线程失败", e)
+    
+    def get_consecutive_failures(self) -> int:
+        """获取当前连续失效次数"""
+        return self.consecutive_failures
+    
+    def get_consecutive_upstream_errors(self) -> int:
+        """获取当前上游服务连续错误次数"""
+        return self.consecutive_upstream_errors
+    
+    def reset_consecutive_failures(self):
+        """重置连续失效计数"""
+        with self.lock:
+            old_count = self.consecutive_failures
+            old_upstream_count = self.consecutive_upstream_errors
+            
+            self.consecutive_failures = 0
+            self.consecutive_upstream_errors = 0
+            
+            if old_count > 0:
+                logger.info(f"手动重置连续失效计数: {old_count} -> 0")
+            if old_upstream_count > 0:
+                logger.info(f"手动重置上游服务连续错误计数: {old_upstream_count} -> 0")
+    
+

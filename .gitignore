@@ -7,5 +7,6 @@ utils/
 
 .env
 tokens.txt
+accounts.txt
 *.pyc
 *.log

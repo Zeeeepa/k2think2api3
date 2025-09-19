@@ -2,12 +2,21 @@
 K2Think API 代理服务 - 重构版本
 提供OpenAI兼容的API接口，代理到K2Think服务
 """
+import os
+import sys
 import time
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+
+# 确保使用UTF-8编码
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
 
 from src.config import Config
 from src.constants import APIConstants
@@ -29,7 +38,24 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("K2Think API Proxy 启动中...")
+    
+    # 如果启用了token自动更新，启动更新服务
+    if Config.ENABLE_TOKEN_AUTO_UPDATE:
+        token_updater = Config.get_token_updater()
+        if token_updater.start():
+            logger.info(f"Token自动更新服务已启动 - 更新间隔: {Config.TOKEN_UPDATE_INTERVAL}秒")
+        else:
+            logger.error("Token自动更新服务启动失败")
+    else:
+        logger.info("Token自动更新服务未启用")
+    
     yield
+    
+    # 关闭token更新服务
+    if Config.ENABLE_TOKEN_AUTO_UPDATE and Config._token_updater:
+        Config._token_updater.stop()
+        logger.info("Token自动更新服务已停止")
+    
     logger.info("K2Think API Proxy 关闭中...")
 
 # 创建FastAPI应用
@@ -74,7 +100,12 @@ async def homepage():
                 "token_stats": "/admin/tokens/stats",
                 "reset_token": "/admin/tokens/reset/{token_index}",
                 "reset_all": "/admin/tokens/reset-all", 
-                "reload_tokens": "/admin/tokens/reload"
+                "reload_tokens": "/admin/tokens/reload",
+                "consecutive_failures": "/admin/tokens/consecutive-failures",
+                "reset_consecutive": "/admin/tokens/reset-consecutive",
+                "updater_status": "/admin/tokens/updater/status",
+                "force_update": "/admin/tokens/updater/force-update",
+                "cleanup_temp_files": "/admin/tokens/updater/cleanup-temp"
             }
         }
     })
@@ -96,7 +127,9 @@ async def health_check():
         "tokens": {
             "total": token_stats["total_tokens"],
             "active": token_stats["active_tokens"],
-            "inactive": token_stats["inactive_tokens"]
+            "inactive": token_stats["inactive_tokens"],
+            "consecutive_failures": token_manager.get_consecutive_failures(),
+            "auto_update_enabled": Config.ENABLE_TOKEN_AUTO_UPDATE
         }
     })
 
@@ -120,6 +153,12 @@ async def get_token_stats():
     """获取token池统计信息"""
     token_manager = Config.get_token_manager()
     stats = token_manager.get_token_stats()
+    # 添加连续失效信息
+    stats["consecutive_failures"] = token_manager.get_consecutive_failures()
+    stats["consecutive_failure_threshold"] = token_manager.consecutive_failure_threshold
+    # 添加上游服务错误信息
+    stats["consecutive_upstream_errors"] = token_manager.get_consecutive_upstream_errors()
+    stats["upstream_error_threshold"] = token_manager.upstream_error_threshold
     return JSONResponse(content={
         "status": "success",
         "data": stats
@@ -174,6 +213,113 @@ async def reload_tokens():
                 "message": f"重新加载失败: {str(e)}"
             }
         )
+
+@app.get("/admin/tokens/consecutive-failures")
+async def get_consecutive_failures():
+    """获取连续失效信息"""
+    token_manager = Config.get_token_manager()
+    return JSONResponse(content={
+        "status": "success",
+        "data": {
+            "consecutive_failures": token_manager.get_consecutive_failures(),
+            "threshold": token_manager.consecutive_failure_threshold,
+            "consecutive_upstream_errors": token_manager.get_consecutive_upstream_errors(),
+            "upstream_error_threshold": token_manager.upstream_error_threshold,
+            "last_upstream_error_time": token_manager.last_upstream_error_time.isoformat() if token_manager.last_upstream_error_time else None,
+            "token_pool_size": len(token_manager.tokens),
+            "auto_refresh_enabled": Config.ENABLE_TOKEN_AUTO_UPDATE and len(token_manager.tokens) > 2,
+            "last_check": "实时检测"
+        }
+    })
+
+@app.post("/admin/tokens/reset-consecutive")
+async def reset_consecutive_failures():
+    """重置连续失效计数"""
+    token_manager = Config.get_token_manager()
+    old_count = token_manager.get_consecutive_failures()
+    token_manager.reset_consecutive_failures()
+    return JSONResponse(content={
+        "status": "success",
+        "message": f"连续失效计数已重置: {old_count} -> 0",
+        "data": {
+            "previous_count": old_count,
+            "current_count": 0
+        }
+    })
+
+@app.get("/admin/tokens/updater/status")
+async def get_updater_status():
+    """获取token更新器状态"""
+    if not Config.ENABLE_TOKEN_AUTO_UPDATE:
+        return JSONResponse(content={
+            "status": "disabled",
+            "message": "Token自动更新未启用"
+        })
+    
+    token_updater = Config.get_token_updater()
+    status = token_updater.get_status()
+    return JSONResponse(content={
+        "status": "success",
+        "data": status
+    })
+
+@app.post("/admin/tokens/updater/force-update")
+async def force_update_tokens():
+    """强制更新tokens"""
+    if not Config.ENABLE_TOKEN_AUTO_UPDATE:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": "Token自动更新未启用"
+            }
+        )
+    
+    token_updater = Config.get_token_updater()
+    success = await token_updater.force_update_async()
+    
+    if success:
+        # 更新成功后重新加载token管理器
+        Config.reload_tokens()
+        token_manager = Config.get_token_manager()
+        stats = token_manager.get_token_stats()
+        
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Token强制更新成功",
+            "data": stats
+        })
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Token强制更新失败"
+            }
+        )
+
+@app.post("/admin/tokens/updater/cleanup-temp")
+async def cleanup_temp_files():
+    """清理临时文件"""
+    if not Config.ENABLE_TOKEN_AUTO_UPDATE:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": "Token自动更新未启用"
+            }
+        )
+    
+    token_updater = Config.get_token_updater()
+    cleaned_count = token_updater.cleanup_all_temp_files()
+    
+    return JSONResponse(content={
+        "status": "success",
+        "message": f"临时文件清理完成，共清理 {cleaned_count} 个文件",
+        "data": {
+            "cleaned_files": cleaned_count
+        }
+    })
 
 @app.exception_handler(K2ThinkProxyError)
 async def proxy_exception_handler(request: Request, exc: K2ThinkProxyError):

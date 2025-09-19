@@ -17,12 +17,13 @@ from src.constants import (
 )
 from src.exceptions import (
     AuthenticationError, SerializationError, 
-    K2ThinkProxyError
+    K2ThinkProxyError, UpstreamError
 )
 from src.models import ChatCompletionRequest, ModelsResponse, ModelInfo
 from src.tool_handler import ToolHandler
 from src.response_processor import ResponseProcessor
 from src.token_manager import TokenManager
+from src.utils import safe_log_error, safe_log_info, safe_log_warning
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class APIHandler:
             # 重新抛出自定义异常
             raise
         except Exception as e:
-            logger.error(f"API转发错误: {e}")
+            safe_log_error(logger, "API转发错误", e)
             raise HTTPException(
                 status_code=APIConstants.HTTP_INTERNAL_ERROR,
                 detail={
@@ -137,7 +138,7 @@ class APIHandler:
                     "tool_calls": msg.tool_calls
                 })
             except Exception as e:
-                logger.error(f"处理消息时出错: {e}, 消息: {msg}")
+                safe_log_error(logger, f"处理消息时出错, 消息: {msg}", e)
                 # 使用默认值
                 raw_messages.append({
                     "role": msg.role, 
@@ -216,7 +217,7 @@ class APIHandler:
                     "content": content
                 })
             except Exception as e:
-                logger.error(f"构建K2Think消息时出错: {e}, 消息: {msg}")
+                safe_log_error(logger, f"构建K2Think消息时出错, 消息: {msg}", e)
                 # 使用安全的默认值
                 fallback_content = self.tool_handler._content_to_string(msg.get("content", ""))
                 k2think_messages.append({
@@ -271,7 +272,7 @@ class APIHandler:
                 k2think_payload = json.loads(json.dumps(k2think_payload, default=str, ensure_ascii=False))
                 logger.info(LogMessages.JSON_FIXED)
             except Exception as fix_error:
-                logger.error(f"无法修复序列化问题: {fix_error}")
+                safe_log_error(logger, "无法修复序列化问题", fix_error)
                 raise SerializationError()
     
     def _build_request_headers(self, request: ChatCompletionRequest, k2think_payload: Dict, token: str) -> Dict[str, str]:
@@ -361,12 +362,19 @@ class APIHandler:
             # 获取下一个可用token
             token = self.token_manager.get_next_token()
             if not token:
-                logger.error("没有可用的token")
+                # 根据是否启用自动更新提供不同的错误信息
+                if Config.ENABLE_TOKEN_AUTO_UPDATE:
+                    error_message = "Token池暂时为空，可能正在自动更新中。请稍后重试或检查自动更新服务状态。"
+                    safe_log_warning(logger, "没有可用的token，可能正在自动更新中")
+                else:
+                    error_message = "所有token都已失效，请检查token配置或重新加载token文件。"
+                    safe_log_error(logger, "没有可用的token")
+                
                 raise HTTPException(
                     status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
                     detail={
                         "error": {
-                            "message": "所有token都已失效，请检查token配置",
+                            "message": error_message,
                             "type": ErrorMessages.API_ERROR
                         }
                     }
@@ -401,7 +409,7 @@ class APIHandler:
                         HeaderConstants.X_ACCEL_BUFFERING: HeaderConstants.NO_BUFFERING
                     }
                 )
-            except Exception as e:
+            except (UpstreamError, Exception) as e:
                 last_exception = e
                 logger.warning(f"流式请求失败 (第{attempt + 1}次): {e}")
                 
@@ -418,7 +426,7 @@ class APIHandler:
                 await asyncio.sleep(0.5)
         
         # 所有重试都失败了
-        logger.error(f"所有流式请求重试都失败了，最后错误: {last_exception}")
+        safe_log_error(logger, "所有流式请求重试都失败了，最后错误", last_exception)
         raise HTTPException(
             status_code=APIConstants.HTTP_INTERNAL_ERROR,
             detail={
@@ -444,12 +452,19 @@ class APIHandler:
             # 获取下一个可用token
             token = self.token_manager.get_next_token()
             if not token:
-                logger.error("没有可用的token")
+                # 根据是否启用自动更新提供不同的错误信息
+                if Config.ENABLE_TOKEN_AUTO_UPDATE:
+                    error_message = "Token池暂时为空，可能正在自动更新中。请稍后重试或检查自动更新服务状态。"
+                    safe_log_warning(logger, "没有可用的token，可能正在自动更新中")
+                else:
+                    error_message = "所有token都已失效，请检查token配置或重新加载token文件。"
+                    safe_log_error(logger, "没有可用的token")
+                
                 raise HTTPException(
                     status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
                     detail={
                         "error": {
-                            "message": "所有token都已失效，请检查token配置",
+                            "message": error_message,
                             "type": ErrorMessages.API_ERROR
                         }
                     }
@@ -493,7 +508,7 @@ class APIHandler:
                 
                 return JSONResponse(content=openai_response)
                 
-            except Exception as e:
+            except (UpstreamError, Exception) as e:
                 last_exception = e
                 logger.warning(f"非流式请求失败 (第{attempt + 1}次): {e}")
                 
@@ -510,7 +525,7 @@ class APIHandler:
                 await asyncio.sleep(0.5)
         
         # 所有重试都失败了
-        logger.error(f"所有非流式请求重试都失败了，最后错误: {last_exception}")
+        safe_log_error(logger, "所有非流式请求重试都失败了，最后错误", last_exception)
         raise HTTPException(
             status_code=APIConstants.HTTP_INTERNAL_ERROR,
             detail={

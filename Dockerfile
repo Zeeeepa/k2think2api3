@@ -15,10 +15,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
 COPY k2think_proxy.py .
+COPY get_tokens.py .
 COPY src/ ./src/
 
-# 创建一个默认的空tokens.txt文件（如果没有通过volume挂载的话）
+# 创建默认文件（如果没有通过volume挂载的话）
 RUN touch tokens.txt && echo "# 请通过docker-compose或volume挂载实际的tokens.txt文件" > tokens.txt
+RUN touch accounts.txt && echo "# 请通过docker-compose或volume挂载实际的accounts.txt文件" > accounts.txt
 
 # 创建非root用户运行应用
 RUN useradd -r -s /bin/false appuser && \

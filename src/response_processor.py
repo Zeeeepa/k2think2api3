@@ -18,6 +18,7 @@ from src.constants import (
 )
 from src.exceptions import UpstreamError, TimeoutError as ProxyTimeoutError
 from src.tool_handler import ToolHandler
+from src.utils import safe_log_error, safe_log_info, safe_log_warning
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ class ResponseProcessor:
         try:
             return httpx.AsyncClient(**base_kwargs)
         except Exception as e:
-            logger.error(f"创建客户端失败: {e}")
+            safe_log_error(logger, "创建客户端失败", e)
             raise e
     
     async def make_request(
@@ -243,17 +244,17 @@ class ResponseProcessor:
                 return response
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP状态错误: {e.response.status_code} - {e.response.text}")
+            safe_log_error(logger, f"HTTP状态错误: {e.response.status_code} - {e.response.text}")
             if client and not stream:
                 await client.aclose()
             raise UpstreamError(f"上游服务错误: {e.response.status_code}", e.response.status_code)
         except httpx.TimeoutException as e:
-            logger.error(f"请求超时: {e}")
+            safe_log_error(logger, "请求超时", e)
             if client and not stream:
                 await client.aclose()
             raise ProxyTimeoutError("请求超时")
         except Exception as e:
-            logger.error(f"请求异常: {e}")
+            safe_log_error(logger, "请求异常", e)
             if client and not stream:
                 await client.aclose()
             raise e
@@ -292,7 +293,7 @@ class ResponseProcessor:
             return full_content, token_info
                         
         except Exception as e:
-            logger.error(f"处理非流式响应错误: {e}")
+            safe_log_error(logger, "处理非流式响应错误", e)
             raise
     
     async def process_stream_response_with_tools(
@@ -370,7 +371,7 @@ class ResponseProcessor:
             yield ResponseConstants.STREAM_DONE_MARKER
             
         except Exception as e:
-            logger.error(f"流式响应处理错误: {e}")
+            safe_log_error(logger, "流式响应处理错误", e)
             error_chunk = self._create_chunk_data(
                 delta={},
                 finish_reason=ResponseConstants.FINISH_REASON_ERROR,
