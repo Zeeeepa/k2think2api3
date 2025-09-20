@@ -49,6 +49,7 @@ pip install -r requirements.txt
 2. **配置环境变量**
 
 ```bash
+cd data
 cp .env.example .env
 # 编辑 .env 文件，配置你的API密钥和其他选项
 ```
@@ -60,6 +61,7 @@ cp .env.example .env
 **方式一：手动管理（传统方式）**
 ```bash
 # 复制token示例文件并编辑
+cd data
 cp tokens.example.txt tokens.txt
 # 编辑tokens.txt文件，添加你的实际K2Think tokens
 ```
@@ -85,6 +87,7 @@ python k2think_proxy.py
 
 ```bash
 # 准备配置文件
+cd data
 cp .env.example .env
 cp accounts.example.txt accounts.txt
 
@@ -437,27 +440,6 @@ if response.choices[0].message.tool_calls:
 - `"none"`: 禁用工具调用
 - `"required"`: 强制模型使用工具
 - `{"type": "function", "function": {"name": "tool_name"}}`: 强制使用特定工具
-
-### 测试工具调用
-
-项目包含完整的测试套件，位于 `test/` 文件夹：
-
-```bash
-# 运行所有测试
-cd test
-python run_all_tests.py
-
-# 运行特定测试
-python run_all_tests.py debug_test      # 基础功能测试
-python run_all_tests.py test_tools      # 完整工具调用测试  
-python run_all_tests.py test_contentpart # ContentPart序列化测试
-python run_all_tests.py test_message_accumulation # 消息累积测试
-
-# 查看工具调用示例
-python tool_example.py
-```
-
-详细说明请参考 [`test/README.md`](test/README.md)。
 
 ## Python SDK 使用示例
 

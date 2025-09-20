@@ -7,14 +7,21 @@ services:
     ports:
       - "${HOST_PORT:-8001}:8001"
     volumes:
-      # 映射tokens.txt文件到容器内（如果启用自动更新，需要去掉:ro标记）
-      - ./tokens.txt:/app/tokens.txt
-      # 映射accounts.txt文件到容器内（仅在启用自动更新时需要）
-      - ./accounts.txt:/app/accounts.txt:ro
+      # 使用目录挂载而非文件挂载，避免文件锁定问题
+      - ./data:/app/data
+      # 或者使用命名卷（推荐用于生产环境）
+      # - k2think_data:/app/data
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=utf-8
+      - PYTHONLEGACYWINDOWSSTDIO=0
+      - LC_ALL=C.UTF-8
+      - LANG=C.UTF-8
+      # 更新配置文件路径指向data目录
+      - TOKENS_FILE=/app/data/tokens.txt
+      - ACCOUNTS_FILE=/app/data/accounts.txt
     restart: unless-stopped
     # 健康检查
     healthcheck:
@@ -23,3 +30,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+# 可选：使用命名卷（推荐用于生产环境）
+# volumes:
+#   k2think_data:
+#     driver: local

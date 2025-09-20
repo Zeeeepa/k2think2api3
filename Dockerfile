@@ -3,8 +3,12 @@ FROM python:3.12-slim
 # 安装curl用于健康检查
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# 设置环境变量
+# 设置环境变量 - 强化编码支持
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONIOENCODING=utf-8
+ENV PYTHONLEGACYWINDOWSSTDIO=0
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
 
 # 设置工作目录
 WORKDIR /app
@@ -18,9 +22,12 @@ COPY k2think_proxy.py .
 COPY get_tokens.py .
 COPY src/ ./src/
 
-# 创建默认文件（如果没有通过volume挂载的话）
-RUN touch tokens.txt && echo "# 请通过docker-compose或volume挂载实际的tokens.txt文件" > tokens.txt
-RUN touch accounts.txt && echo "# 请通过docker-compose或volume挂载实际的accounts.txt文件" > accounts.txt
+# 创建数据目录和默认文件
+RUN mkdir -p /app/data && \
+    touch /app/data/tokens.txt && \
+    echo "# Token文件将由自动更新服务生成" > /app/data/tokens.txt && \
+    touch /app/data/accounts.txt && \
+    echo "# 请通过volume挂载实际的accounts.txt文件" > /app/data/accounts.txt
 
 # 创建非root用户运行应用
 RUN useradd -r -s /bin/false appuser && \
