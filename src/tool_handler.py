@@ -13,6 +13,7 @@ from src.constants import (
     TimeConstants
 )
 from src.exceptions import ToolProcessingError
+from src.utils import safe_log_warning
 
 logger = logging.getLogger(__name__)
 
