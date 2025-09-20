@@ -20,21 +20,21 @@ except ImportError:
     def safe_log_error(logger, msg, exc=None):
         try:
             if exc:
-                safe_log_error(logger, f"{msg}: {str(exc)}")
+                logger.error(f"{msg}: {str(exc)}")
             else:
-                safe_log_error(logger, msg)
+                logger.error(msg)
         except:
             print(f"Log error: {msg}")
     
     def safe_log_info(logger, msg):
         try:
-            safe_log_info(logger, msg)
+            logger.info(msg)
         except:
             print(f"Log info: {msg}")
     
     def safe_log_warning(logger, msg):
         try:
-            safe_log_warning(logger, msg)
+            logger.warning(msg)
         except:
             print(f"Log warning: {msg}")
 
