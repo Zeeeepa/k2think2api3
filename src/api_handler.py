@@ -158,17 +158,17 @@ class APIHandler:
     
     def _log_request_info(self, raw_messages: List[Dict], has_tools: bool, tools: List):
         """记录请求信息"""
-        logger.info(LogMessages.TOOL_STATUS.format(
+        safe_log_info(logger, LogMessages.TOOL_STATUS.format(
             has_tools, len(tools) if tools else 0
         ))
-        logger.info(LogMessages.MESSAGE_RECEIVED.format(len(raw_messages)))
+        safe_log_info(logger, LogMessages.MESSAGE_RECEIVED.format(len(raw_messages)))
         
         # 记录原始消息的角色分布
         role_count = {}
         for msg in raw_messages:
             role = msg.get("role", "unknown")
             role_count[role] = role_count.get(role, 0) + 1
-        logger.info(LogMessages.ROLE_DISTRIBUTION.format("原始", role_count))
+        safe_log_info(logger, LogMessages.ROLE_DISTRIBUTION.format("原始", role_count))
     
     def _process_messages_with_tools(
         self, 
@@ -183,7 +183,7 @@ class APIHandler:
                 request.tools,
                 request.tool_choice
             )
-            logger.info(LogMessages.MESSAGE_PROCESSED.format(
+            safe_log_info(logger, LogMessages.MESSAGE_PROCESSED.format(
                 len(raw_messages), len(processed_messages)
             ))
             
@@ -192,10 +192,10 @@ class APIHandler:
             for msg in processed_messages:
                 role = msg.get("role", "unknown")
                 processed_role_count[role] = processed_role_count.get(role, 0) + 1
-            logger.info(LogMessages.ROLE_DISTRIBUTION.format("处理后", processed_role_count))
+            safe_log_info(logger, LogMessages.ROLE_DISTRIBUTION.format("处理后", processed_role_count))
         else:
             processed_messages = raw_messages
-            logger.info(LogMessages.NO_TOOLS)
+            safe_log_info(logger, LogMessages.NO_TOOLS)
         
         return processed_messages
     
@@ -264,13 +264,13 @@ class APIHandler:
         try:
             # 测试JSON序列化
             json.dumps(k2think_payload, ensure_ascii=False)
-            logger.info(LogMessages.JSON_VALIDATION_SUCCESS)
+            safe_log_info(logger, LogMessages.JSON_VALIDATION_SUCCESS)
         except Exception as e:
-            logger.error(LogMessages.JSON_VALIDATION_FAILED.format(e))
+            safe_log_error(logger, LogMessages.JSON_VALIDATION_FAILED.format(e))
             # 尝试修复序列化问题
             try:
                 k2think_payload = json.loads(json.dumps(k2think_payload, default=str, ensure_ascii=False))
-                logger.info(LogMessages.JSON_FIXED)
+                safe_log_info(logger, LogMessages.JSON_FIXED)
             except Exception as fix_error:
                 safe_log_error(logger, "无法修复序列化问题", fix_error)
                 raise SerializationError()
@@ -332,7 +332,7 @@ class APIHandler:
             if tool_calls:
                 # 当存在工具调用时，内容必须为null（OpenAI规范）
                 message_content = None
-                logger.info(LogMessages.TOOL_CALLS_EXTRACTED.format(
+                safe_log_info(logger, LogMessages.TOOL_CALLS_EXTRACTED.format(
                     json.dumps(tool_calls, ensure_ascii=False)
                 ))
             else:
@@ -384,7 +384,7 @@ class APIHandler:
             headers = self._build_request_headers(request, k2think_payload, token)
             
             try:
-                logger.info(f"尝试流式请求 (第{attempt + 1}次)")
+                safe_log_info(logger, f"尝试流式请求 (第{attempt + 1}次)")
                 
                 # 使用现有的响应处理器，但在异常时标记token失败
                 async def stream_generator():
@@ -411,12 +411,12 @@ class APIHandler:
                 )
             except (UpstreamError, Exception) as e:
                 last_exception = e
-                logger.warning(f"流式请求失败 (第{attempt + 1}次): {e}")
+                safe_log_warning(logger, f"流式请求失败 (第{attempt + 1}次): {e}")
                 
                 # 标记token失败
                 token_failed = self.token_manager.mark_token_failure(token, str(e))
                 if token_failed:
-                    logger.error(f"Token已被标记为失效")
+                    safe_log_error(logger, f"Token已被标记为失效")
                 
                 # 如果是最后一次尝试，抛出异常
                 if attempt == max_retries - 1:
@@ -474,7 +474,7 @@ class APIHandler:
             headers = self._build_request_headers(request, k2think_payload, token)
             
             try:
-                logger.info(f"尝试非流式请求 (第{attempt + 1}次)")
+                safe_log_info(logger, f"尝试非流式请求 (第{attempt + 1}次)")
                 
                 # 处理响应
                 full_content, token_info = await self.response_processor.process_non_stream_response(
@@ -493,7 +493,7 @@ class APIHandler:
                     if tool_calls:
                         # 当存在工具调用时，内容必须为null（OpenAI规范）
                         message_content = None
-                        logger.info(LogMessages.TOOL_CALLS_EXTRACTED.format(
+                        safe_log_info(logger, LogMessages.TOOL_CALLS_EXTRACTED.format(
                             json.dumps(tool_calls, ensure_ascii=False)
                         ))
                     else:
@@ -510,12 +510,12 @@ class APIHandler:
                 
             except (UpstreamError, Exception) as e:
                 last_exception = e
-                logger.warning(f"非流式请求失败 (第{attempt + 1}次): {e}")
+                safe_log_warning(logger, f"非流式请求失败 (第{attempt + 1}次): {e}")
                 
                 # 标记token失败
                 token_failed = self.token_manager.mark_token_failure(token, str(e))
                 if token_failed:
-                    logger.error(f"Token已被标记为失效")
+                    safe_log_error(logger, f"Token已被标记为失效")
                 
                 # 如果是最后一次尝试，抛出异常
                 if attempt == max_retries - 1:

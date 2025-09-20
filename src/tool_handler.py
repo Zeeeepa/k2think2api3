@@ -89,7 +89,7 @@ class ToolHandler:
         
         # 限制工具提示长度，避免过长导致上游API拒绝
         if len(tools_prompt) > ToolConstants.MAX_TOOL_PROMPT_LENGTH:
-            logger.warning(LogMessages.TOOL_PROMPT_TOO_LONG.format(len(tools_prompt)))
+            safe_log_warning(logger, LogMessages.TOOL_PROMPT_TOO_LONG.format(len(tools_prompt)))
             tools_prompt = tools_prompt[:ToolConstants.MAX_TOOL_PROMPT_LENGTH] + ToolConstants.TOOL_PROMPT_TRUNCATE_SUFFIX
         
         processed = []

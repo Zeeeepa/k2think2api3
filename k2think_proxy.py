@@ -13,10 +13,25 @@ from fastapi.responses import JSONResponse, Response
 
 # 确保使用UTF-8编码
 os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+os.environ.setdefault('PYTHONLEGACYWINDOWSSTDIO', '0')
+
+# 强制设置UTF-8编码
+import locale
+try:
+    locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+    except locale.Error:
+        pass  # 如果设置失败，继续使用默认设置
+
+# 重新配置标准输入输出流
 if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stdin, 'reconfigure'):
+    sys.stdin.reconfigure(encoding='utf-8', errors='replace')
 
 from src.config import Config
 from src.constants import APIConstants

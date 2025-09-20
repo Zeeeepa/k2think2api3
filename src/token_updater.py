@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Token更新服务模块
 定期运行get_tokens.py来更新token池
@@ -7,6 +8,7 @@ import time
 import logging
 import threading
 import subprocess
+import shutil
 from typing import Optional
 from datetime import datetime, timedelta
 from src.utils import safe_log_error, safe_log_info, safe_log_warning
@@ -44,7 +46,7 @@ class TokenUpdater:
         self.is_updating = False
         self.last_error: Optional[str] = None
         
-        logger.info(f"Token更新器初始化完成 - 更新间隔: {update_interval}秒")
+        safe_log_info(logger, f"Token更新器初始化完成 - 更新间隔: {update_interval}秒")
         
         # 清理可能遗留的临时文件
         self.cleanup_all_temp_files()
@@ -64,7 +66,7 @@ class TokenUpdater:
     def _run_token_update(self) -> bool:
         """运行token更新脚本（原子性更新）"""
         if self.is_updating:
-            logger.warning("Token更新已在进行中，跳过此次更新")
+            safe_log_warning(logger, "Token更新已在进行中，跳过此次更新")
             return False
             
         self.is_updating = True
@@ -72,12 +74,13 @@ class TokenUpdater:
         temp_tokens_file = f"{self.tokens_file}.tmp"
         
         try:
-            logger.info("开始更新token池...")
+            safe_log_info(logger, "开始更新token池...")
             
             # 使用临时文件进行更新，避免服务中断
             result = subprocess.run(
                 ["python", self.get_tokens_script, self.accounts_file, temp_tokens_file],
                 capture_output=True,
+                encoding='utf-8', 
                 text=True,
                 timeout=300  # 5分钟超时
             )
@@ -86,17 +89,28 @@ class TokenUpdater:
                 # 检查临时文件是否生成且不为空
                 if os.path.exists(temp_tokens_file) and os.path.getsize(temp_tokens_file) > 0:
                     try:
-                        # 原子性替换：重命名临时文件为正式文件
+                        # 原子性替换：避免重命名正在使用的文件
                         if os.path.exists(self.tokens_file):
-                            # 备份当前文件
+                            # 备份当前文件（使用复制而非重命名，避免文件锁定问题）
                             backup_file = f"{self.tokens_file}.backup"
                             if os.path.exists(backup_file):
                                 os.remove(backup_file)  # 删除旧备份
-                            os.rename(self.tokens_file, backup_file)
+                            
+                            # 复制当前文件到备份位置
+                            shutil.copy2(self.tokens_file, backup_file)
+                            logger.debug(f"已备份当前tokens文件到: {backup_file}")
                         
-                        os.rename(temp_tokens_file, self.tokens_file)
+                        # 使用临时文件替换原文件（Windows下更安全的方式）
+                        if os.name == 'nt':  # Windows系统
+                            # 在Windows下，先删除目标文件再重命名
+                            if os.path.exists(self.tokens_file):
+                                os.remove(self.tokens_file)
+                            os.rename(temp_tokens_file, self.tokens_file)
+                        else:
+                            # Unix/Linux系统可以直接重命名覆盖
+                            os.rename(temp_tokens_file, self.tokens_file)
                         
-                        logger.info("Token更新成功，文件已原子性替换")
+                        safe_log_info(logger, "Token更新成功，文件已原子性替换")
                         logger.debug(f"更新输出: {result.stdout}")
                         self.update_count += 1
                         self.last_update = datetime.now()
@@ -107,21 +121,21 @@ class TokenUpdater:
                         return True
                     except Exception as rename_error:
                         error_msg = f"文件重命名失败: {rename_error}"
-                        logger.error(error_msg)
+                        safe_log_error(logger, error_msg)
                         self.last_error = error_msg
                         self._cleanup_temp_file(temp_tokens_file)
                         self.error_count += 1
                         return False
                 else:
                     error_msg = "Token更新失败 - 临时文件为空或不存在"
-                    logger.error(error_msg)
+                    safe_log_error(logger, error_msg)
                     self.last_error = error_msg
                     self._cleanup_temp_file(temp_tokens_file)
                     self.error_count += 1
                     return False
             else:
                 error_msg = f"Token更新失败 - 返回码: {result.returncode}, 错误: {result.stderr}"
-                logger.error(error_msg)
+                safe_log_error(logger, error_msg)
                 self.last_error = error_msg
                 self._cleanup_temp_file(temp_tokens_file)
                 self.error_count += 1
@@ -129,14 +143,14 @@ class TokenUpdater:
                 
         except subprocess.TimeoutExpired:
             error_msg = "Token更新超时"
-            logger.error(error_msg)
+            safe_log_error(logger, error_msg)
             self.last_error = error_msg
             self._cleanup_temp_file(temp_tokens_file)
             self.error_count += 1
             return False
         except Exception as e:
             error_msg = f"Token更新异常: {e}"
-            logger.error(error_msg)
+            safe_log_error(logger, error_msg)
             self.last_error = error_msg
             self._cleanup_temp_file(temp_tokens_file)
             self.error_count += 1
@@ -151,7 +165,7 @@ class TokenUpdater:
                 os.remove(temp_file)
                 logger.debug(f"已清理临时文件: {temp_file}")
         except Exception as e:
-            logger.warning(f"清理临时文件失败: {e}")
+            safe_log_warning(logger, f"清理临时文件失败: {e}")
     
     def cleanup_all_temp_files(self):
         """清理所有相关的临时文件"""
@@ -165,13 +179,13 @@ class TokenUpdater:
             try:
                 if os.path.exists(pattern):
                     os.remove(pattern)
-                    logger.info(f"已清理遗留文件: {pattern}")
+                    safe_log_info(logger, f"已清理遗留文件: {pattern}")
                     cleaned_count += 1
             except Exception as e:
-                logger.warning(f"清理遗留文件失败 {pattern}: {e}")
+                safe_log_warning(logger, f"清理遗留文件失败 {pattern}: {e}")
         
         if cleaned_count > 0:
-            logger.info(f"共清理了 {cleaned_count} 个遗留文件")
+            safe_log_info(logger, f"共清理了 {cleaned_count} 个遗留文件")
         else:
             logger.debug("没有发现需要清理的遗留文件")
         
@@ -184,27 +198,38 @@ class TokenUpdater:
             from src.config import Config
             if Config._token_manager is not None:
                 Config._token_manager.reload_tokens()
-                logger.info("Token管理器已重新加载")
+                safe_log_info(logger, "Token管理器已重新加载")
         except Exception as e:
-            logger.warning(f"通知token重新加载失败: {e}")
+            safe_log_warning(logger, f"通知token重新加载失败: {e}")
     
 
     def _update_loop(self):
         """更新循环"""
-        logger.info("Token更新服务启动")
+        safe_log_info(logger, "Token更新服务启动")
         
         # # 首次启动时，如果tokens.txt中没有token（非#开头），立即更新一次
         # 判断tokens.txt中的token数量
         if os.path.exists(self.tokens_file):
-            with open(self.tokens_file, "r") as f:
-                lines = f.readlines()
-                lines = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
-                if len(lines) < 1:
+            try:
+                # 读取文件内容并立即关闭文件句柄
+                with open(self.tokens_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # 在文件句柄关闭后处理内容
+                lines = content.splitlines()
+                valid_lines = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+                
+                if len(valid_lines) < 1:
                     # 动态导入Config避免循环导入
                     from src.config import Config
                     if Config.ENABLE_TOKEN_AUTO_UPDATE:
-                        logger.info("首次启动时，tokens.txt中没有token（非#开头），立即更新一次")
+                        safe_log_info(logger, "首次启动时，tokens.txt中没有token（非#开头），立即更新一次")
+                        # 添加小延迟确保文件句柄完全释放
+                        
+                        time.sleep(0.1)
                         self._run_token_update()
+            except Exception as e:
+                safe_log_warning(logger, f"检查tokens文件时出错: {e}")
         
         while self.is_running:
             try:
@@ -216,7 +241,7 @@ class TokenUpdater:
                 if self._check_files_exist():
                     self._run_token_update()
                 else:
-                    logger.warning("跳过此次更新 - 必要文件不存在")
+                    safe_log_warning(logger, "跳过此次更新 - 必要文件不存在")
                     
             except Exception as e:
                 safe_log_error(logger, "更新循环异常", e)
@@ -225,39 +250,39 @@ class TokenUpdater:
     def start(self) -> bool:
         """启动token更新服务"""
         if self.is_running:
-            logger.warning("Token更新服务已在运行")
+            safe_log_warning(logger, "Token更新服务已在运行")
             return False
         
         if not self._check_files_exist():
-            logger.error("启动失败 - 必要文件不存在")
+            safe_log_error(logger, "启动失败 - 必要文件不存在")
             return False
         
         self.is_running = True
         self.update_thread = threading.Thread(target=self._update_loop, daemon=True)
         self.update_thread.start()
         
-        logger.info("Token更新服务已启动")
+        safe_log_info(logger, "Token更新服务已启动")
         return True
     
     def stop(self):
         """停止token更新服务"""
         if not self.is_running:
-            logger.warning("Token更新服务未在运行")
+            safe_log_warning(logger, "Token更新服务未在运行")
             return
         
         self.is_running = False
         if self.update_thread and self.update_thread.is_alive():
             self.update_thread.join(timeout=5)
         
-        logger.info("Token更新服务已停止")
+        safe_log_info(logger, "Token更新服务已停止")
     
     def force_update(self) -> bool:
         """强制立即更新token"""
         if not self._check_files_exist():
-            logger.error("强制更新失败 - 必要文件不存在")
+            safe_log_error(logger, "强制更新失败 - 必要文件不存在")
             return False
         
-        logger.info("执行强制token更新")
+        safe_log_info(logger, "执行强制token更新")
         return self._run_token_update()
     
     async def force_update_async(self) -> bool:

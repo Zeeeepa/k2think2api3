@@ -232,13 +232,13 @@ class ResponseProcessor:
                 
                 # 详细记录非200响应
                 if response.status_code != APIConstants.HTTP_OK:
-                    logger.error(f"上游API返回错误状态码: {response.status_code}")
-                    logger.error(f"响应头: {dict(response.headers)}")
+                    safe_log_error(logger, f"上游API返回错误状态码: {response.status_code}")
+                    safe_log_error(logger, f"响应头: {dict(response.headers)}")
                     try:
                         error_body = response.text
-                        logger.error(f"错误响应体: {error_body}")
+                        safe_log_error(logger, f"错误响应体: {error_body}")
                     except:
-                        logger.error("无法读取错误响应体")
+                        safe_log_error(logger, "无法读取错误响应体")
                 
                 response.raise_for_status()
                 return response
