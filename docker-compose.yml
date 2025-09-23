@@ -11,8 +11,7 @@ services:
       - ./data:/app/data
       # 或者使用命名卷（推荐用于生产环境）
       # - k2think_data:/app/data
-    # 以root身份启动以修复权限，然后切换到appuser
-    user: "0:0"
+    # 直接以root用户运行，简化权限管理
     env_file:
       - .env
     environment:

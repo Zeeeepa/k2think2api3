@@ -22,9 +22,6 @@ COPY k2think_proxy.py .
 COPY get_tokens.py .
 COPY src/ ./src/
 
-# 创建非root用户运行应用 (使用标准UID 1000)
-RUN useradd -r -s /bin/false -u 1000 appuser
-
 # 创建数据目录和默认文件
 RUN mkdir -p /app/data && \
     touch /app/data/tokens.txt && \
@@ -32,21 +29,13 @@ RUN mkdir -p /app/data && \
     touch /app/data/accounts.txt && \
     echo "# 请通过volume挂载实际的accounts.txt文件" > /app/data/accounts.txt
 
-# 创建简单的启动脚本来处理权限
+# 创建简单的启动脚本
 RUN echo '#!/bin/bash\n\
 # 确保数据目录存在\n\
 mkdir -p /app/data\n\
-# 修复数据目录权限\n\
-chown -R 1000:1000 /app/data 2>/dev/null || true\n\
-# 切换到应用用户运行\n\
-exec su-exec appuser "$@"' > /app/entrypoint.sh && \
+# 直接运行应用\n\
+exec "$@"' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
-
-# 安装su-exec（轻量级的用户切换工具）
-RUN apt-get update && apt-get install -y su-exec && rm -rf /var/lib/apt/lists/*
-
-# 设置正确的所有权
-RUN chown -R appuser:appuser /app
 
 # 暴露端口
 EXPOSE 8001
