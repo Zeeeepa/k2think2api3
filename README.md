@@ -49,7 +49,6 @@ pip install -r requirements.txt
 2. **配置环境变量**
 
 ```bash
-cd data
 cp .env.example .env
 # 编辑 .env 文件，配置你的API密钥和其他选项
 ```
@@ -87,13 +86,13 @@ python k2think_proxy.py
 
 ```bash
 # 准备配置文件
-cd data
 cp .env.example .env
+cd data
 cp accounts.example.txt accounts.txt
 
 # 编辑配置
 # 编辑 .env 文件配置API密钥等
-# 编辑 accounts.txt 添加K2Think账户信息
+# 编辑 accounts.txt 添加K2Think账户信息，格式：{"email": "xxx@yyy.zzz", "k2_password": "xxx"}，一行一个
 
 # 启动服务
 docker-compose up -d
