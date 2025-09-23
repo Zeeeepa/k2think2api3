@@ -174,17 +174,17 @@ class Config:
             # 设置强制刷新回调
             def force_refresh_callback():
                 try:
-                    logging.getLogger(__name__).info("连续token失效触发强制刷新")
+                    logging.getLogger(__name__).info("🔄 检测到token问题，启动自动刷新")
                     success = cls._token_updater.force_update()
                     if success:
                         # 强制刷新成功后，重新加载token管理器
                         cls._token_manager.reload_tokens()
                         cls._token_manager.reset_consecutive_failures()
-                        logging.getLogger(__name__).info("强制刷新完成，已重新加载token池")
+                        logging.getLogger(__name__).info("✅ 自动刷新完成，tokens.txt已更新，token池已重新加载")
                     else:
-                        logging.getLogger(__name__).error("强制刷新失败")
+                        logging.getLogger(__name__).error("❌ 自动刷新失败，请检查accounts.txt文件或手动更新token")
                 except Exception as e:
-                    logging.getLogger(__name__).error(f"强制刷新回调执行失败: {e}")
+                    logging.getLogger(__name__).error(f"❌ 自动刷新回调执行失败: {e}")
             
             cls._token_manager.set_force_refresh_callback(force_refresh_callback)
             logging.getLogger(__name__).info("已设置连续失效自动强制刷新机制")

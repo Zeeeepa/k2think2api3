@@ -372,13 +372,36 @@ class ResponseProcessor:
             
         except Exception as e:
             safe_log_error(logger, "流式响应处理错误", e)
+            
+            # 发送错误信息作为流式响应的一部分，而不是抛出异常
+            if "401" in str(e) or "unauthorized" in str(e).lower():
+                # 401错误：显示tokens强制刷新消息
+                error_message = "🔄 tokens强制刷新已启动，请稍后再试"
+                safe_log_info(logger, "检测到401错误，向客户端发送强制刷新提示")
+            else:
+                # 其他错误：显示一般错误信息
+                error_message = f"请求处理失败: {str(e)}"
+            
+            # 发送错误内容作为正常的流式响应
             error_chunk = self._create_chunk_data(
+                delta={"content": f"\n\n{error_message}"},
+                finish_reason=None,
+                model=original_model
+            )
+            yield f"{ResponseConstants.STREAM_DATA_PREFIX}{json.dumps(error_chunk)}\n\n"
+            
+            # 发送结束chunk
+            end_chunk = self._create_chunk_data(
                 delta={},
                 finish_reason=ResponseConstants.FINISH_REASON_ERROR,
                 model=original_model
             )
-            yield f"{ResponseConstants.STREAM_DATA_PREFIX}{json.dumps(error_chunk)}\n\n"
+            yield f"{ResponseConstants.STREAM_DATA_PREFIX}{json.dumps(end_chunk)}\n\n"
             yield ResponseConstants.STREAM_DONE_MARKER
+            
+            # 重新抛出异常以便上层处理token失败（在发送友好消息之后）
+            # 上层会捕获这个异常并调用token_manager.mark_token_failure
+            raise e
     
     async def _stream_content(self, content: str, model: str = None) -> AsyncGenerator[str, None]:
         """流式发送内容"""

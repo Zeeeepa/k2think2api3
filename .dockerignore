@@ -44,7 +44,7 @@ venv.bak/
 .env.example
 tokens.txt
 tokens.example.txt
-config.example
+tokens.txt.backup
 
 # 日志文件
 *.log

@@ -8,5 +8,6 @@ utils/
 .env
 tokens.txt
 accounts.txt
+tokens.txt.backup
 *.pyc
 *.log

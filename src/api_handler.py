@@ -386,7 +386,7 @@ class APIHandler:
             try:
                 safe_log_info(logger, f"尝试流式请求 (第{attempt + 1}次)")
                 
-                # 使用现有的响应处理器，但在异常时标记token失败
+                # 创建流式生成器，内部处理token成功/失败标记
                 async def stream_generator():
                     try:
                         async for chunk in self.response_processor.process_stream_response_with_tools(
@@ -397,8 +397,20 @@ class APIHandler:
                         self.token_manager.mark_token_success(token)
                     except Exception as e:
                         # 流式响应过程中出现错误，标记token失败
-                        self.token_manager.mark_token_failure(token, str(e))
-                        raise e
+                        safe_log_warning(logger, f"🔍 流式响应异常被捕获，准备标记token失败: {str(e)}")
+                        
+                        # 标记token失败（这会触发自动刷新逻辑）
+                        token_failed = self.token_manager.mark_token_failure(token, str(e))
+                        
+                        # 特别处理401错误
+                        if "401" in str(e) or "unauthorized" in str(e).lower():
+                            safe_log_warning(logger, f"🔒 流式响应中检测到401认证错误，token标记失败: {token_failed}")
+                            safe_log_info(logger, f"🚨 已调用mark_token_failure，应该触发自动刷新")
+                        else:
+                            safe_log_warning(logger, f"流式响应中检测到其他错误: {str(e)}")
+                        
+                        # 注意：不重新抛出异常，避免"response already started"错误
+                        # 错误信息已经通过response_processor发送给客户端
                 
                 return StreamingResponse(
                     stream_generator(),
@@ -410,8 +422,10 @@ class APIHandler:
                     }
                 )
             except (UpstreamError, Exception) as e:
+                # 这里只处理流式响应启动前的异常（主要是连接错误）
+                # 401等上游服务错误现在在流式响应内部处理，不会到达这里
                 last_exception = e
-                safe_log_warning(logger, f"流式请求失败 (第{attempt + 1}次): {e}")
+                safe_log_warning(logger, f"流式请求启动失败 (第{attempt + 1}次): {e}")
                 
                 # 标记token失败
                 token_failed = self.token_manager.mark_token_failure(token, str(e))
@@ -510,7 +524,30 @@ class APIHandler:
                 
             except (UpstreamError, Exception) as e:
                 last_exception = e
-                safe_log_warning(logger, f"非流式请求失败 (第{attempt + 1}次): {e}")
+                
+                # 特别处理401错误
+                if "401" in str(e) or "unauthorized" in str(e).lower():
+                    safe_log_warning(logger, f"🔒 非流式请求遇到401认证错误 (第{attempt + 1}次): {e}")
+                    
+                    # 对于401错误，如果是第一次尝试，返回友好消息而不重试
+                    if attempt == 0:
+                        # 标记token失败以触发自动刷新
+                        self.token_manager.mark_token_failure(token, str(e))
+                        
+                        # 返回友好的刷新提示消息
+                        openai_response = self.response_processor.create_completion_response(
+                            content="🔄 tokens强制刷新已启动，请稍后再试",
+                            tool_calls=None,
+                            token_info={
+                                "prompt_tokens": 0,
+                                "completion_tokens": 10,
+                                "total_tokens": 10
+                            },
+                            model=request.model
+                        )
+                        return JSONResponse(content=openai_response)
+                else:
+                    safe_log_warning(logger, f"非流式请求失败 (第{attempt + 1}次): {e}")
                 
                 # 标记token失败
                 token_failed = self.token_manager.mark_token_failure(token, str(e))

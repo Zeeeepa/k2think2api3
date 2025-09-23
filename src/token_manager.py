@@ -170,12 +170,19 @@ class TokenManager:
                         self.consecutive_upstream_errors += 1
                         self.last_upstream_error_time = datetime.now()
                         
-                        safe_log_warning(logger, f"上游服务错误 (索引: {token_info['index']}, "
+                        safe_log_warning(logger, f"🔒 上游服务认证错误 (索引: {token_info['index']}, "
                                      f"失败次数: {token_info['failures']}/{self.max_failures}, "
                                      f"连续上游错误: {self.consecutive_upstream_errors}): {error_message}")
                         
-                        # 检查上游服务连续报错触发条件
-                        self._check_consecutive_upstream_errors()
+                        # 401错误立即触发强制刷新（不等连续错误阈值）
+                        if "401" in error_message and self.force_refresh_callback:
+                            safe_log_warning(logger, f"🚨 检测到401认证错误，立即触发token强制刷新")
+                            self._trigger_force_refresh("401认证失败")
+                            # 重置连续计数，避免重复触发
+                            self.consecutive_upstream_errors = 0
+                        else:
+                            # 其他上游错误按原逻辑处理
+                            self._check_consecutive_upstream_errors()
                     else:
                         # 增加连续失效计数
                         self.consecutive_failures += 1
@@ -328,30 +335,48 @@ class TokenManager:
         # 检查常见的上游服务错误标识
         upstream_error_indicators = [
             "上游服务错误: 401",
+            "上游服务错误: 403", 
             "401",
-            "unauthorized",
+            "403",
+            "unauthorized", 
+            "forbidden",
             "invalid token",
             "authentication failed",
-            "token expired"
+            "token expired",
+            "authentication error",
+            "invalid_request_error",
+            "authentication_error"
         ]
         
         error_lower = error_message.lower()
-        return any(indicator.lower() in error_lower for indicator in upstream_error_indicators)
+        is_upstream = any(indicator.lower() in error_lower for indicator in upstream_error_indicators)
+        
+        # 特别检查HTTP状态码模式
+        import re
+        # 匹配 "上游服务错误: xxx" 或 "HTTP状态错误: xxx" 等格式中的401/403
+        status_code_pattern = r'(?:上游服务错误|http状态错误|状态码):\s*(?:40[13])'
+        if re.search(status_code_pattern, error_lower):
+            is_upstream = True
+        
+        if is_upstream:
+            safe_log_info(logger, f"检测到上游服务认证错误: {error_message}")
+        
+        return is_upstream
     
     def _check_consecutive_upstream_errors(self):
         """
         检查上游服务连续报错情况，触发强制刷新机制
         """
         if self.consecutive_upstream_errors >= self.upstream_error_threshold:
-            safe_log_warning(logger, f"检测到连续{self.consecutive_upstream_errors}个上游服务错误，触发强制刷新机制")
+            safe_log_warning(logger, f"🚨 检测到连续{self.consecutive_upstream_errors}个上游服务认证错误（401/403），触发自动刷新token池")
             
             # 重置上游错误计数，避免重复触发
             self.consecutive_upstream_errors = 0
             
             if self.force_refresh_callback:
-                self._trigger_force_refresh("上游服务连续报错")
+                self._trigger_force_refresh("上游服务连续认证失败 (401/403)")
             else:
-                safe_log_warning(logger, "未设置强制刷新回调函数，无法自动刷新token池")
+                safe_log_warning(logger, "⚠️ 未设置强制刷新回调函数，无法自动刷新token池")
     
     def _check_consecutive_failures(self):
         """
@@ -394,7 +419,7 @@ class TokenManager:
                     # 运行强制刷新（现在是同步函数）
                     self.force_refresh_callback()
                     
-                    safe_log_info(logger, f"强制刷新已触发 - 原因: {reason}")
+                    safe_log_info(logger, f"🔄 强制刷新tokens.txt已触发 - 原因: {reason}")
                     
                 except Exception as e:
                     safe_log_error(logger, "执行强制刷新回调失败", e)
