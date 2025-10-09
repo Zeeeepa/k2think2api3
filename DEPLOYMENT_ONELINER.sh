@@ -122,7 +122,7 @@ set -a
 source .env
 set +a
 source .venv/bin/activate
-exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT"
+exec python3 -m uvicorn k2think_proxy:app --host 0.0.0.0 --port "$PORT"
 EOF
 chmod +x start_server.sh
 
