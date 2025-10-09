@@ -53,11 +53,12 @@ fi
 
 echo ""
 echo "✨ Running setup..."
-./setup.sh
+chmod +x setup.sh deploy.sh send_request.sh
+bash setup.sh
 
 echo ""
 echo "🎯 Starting server..."
-./deploy.sh
+bash deploy.sh
 
 echo ""
 echo "⏳ Waiting for server to be fully ready..."
@@ -66,7 +67,7 @@ sleep 3
 echo ""
 echo "📤 Sending test request..."
 echo ""
-./send_request.sh
+bash send_request.sh
 
 echo ""
 echo "=============================================="
