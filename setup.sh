@@ -32,9 +32,10 @@ fi
 # Create .env file
 if [ ! -f ".env" ]; then
     echo "📝 Creating .env configuration file..."
-    cat > .env << 'EOF'
+    TIMESTAMP=$(date +%s)
+    cat > .env << EOF
 # API Authentication
-VALID_API_KEY=sk-k2think-proxy-$(date +%s)
+VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
 
 # Server Configuration  
 PORT=7000
@@ -65,4 +66,3 @@ echo "📚 Next steps:"
 echo "   1. Edit accounts.txt if needed (add K2 credentials)"
 echo "   2. Run ./deploy.sh to start the server"
 echo "   3. Run ./send_request.sh to test the API"
-
