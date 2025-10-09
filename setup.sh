@@ -29,16 +29,69 @@ pip install -r requirements.txt
 echo "📁 Creating data directory..."
 mkdir -p data
 
-# Setup accounts file if K2 credentials are available
-if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
-    echo "🔑 Creating accounts.txt from environment variables..."
+# Function to prompt for K2Think credentials
+prompt_for_credentials() {
+    echo ""
+    echo "🔐 K2Think Account Setup"
+    echo "=========================="
+    echo ""
+    echo "To use this API proxy, you need a K2Think account."
+    echo "If you don't have one, sign up at: https://www.k2think.ai/"
+    echo ""
+    
+    # Prompt for email
+    read -p "📧 Enter your K2Think email: " K2_EMAIL
+    
+    # Prompt for password (show input as requested)
+    echo "🔑 Enter your K2Think password (input will be visible):"
+    read -p "Password: " K2_PASSWORD
+    
+    echo ""
+    echo "💾 Saving credentials to accounts.txt..."
     echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
-    echo "✅ accounts.txt created"
+    echo "✅ Credentials saved!"
+    echo ""
+}
+
+# Setup accounts file
+if [ ! -f "accounts.txt" ]; then
+    # Check if credentials are in environment variables
+    if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
+        echo "🔑 Creating accounts.txt from environment variables..."
+        echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
+        echo "✅ accounts.txt created"
+    else
+        # No accounts.txt and no env vars - prompt user
+        echo ""
+        echo "⚠️  No K2Think credentials found!"
+        echo ""
+        read -p "Would you like to enter your credentials now? (y/n): " response
+        
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            prompt_for_credentials
+        else
+            echo ""
+            echo "⏭️  Skipping credential setup."
+            echo "📝 You can create accounts.txt manually later:"
+            echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+            echo ""
+            echo "⚠️  Note: The server will NOT start without valid credentials!"
+            echo ""
+        fi
+    fi
 else
-    if [ ! -f "accounts.txt" ]; then
-        echo "⚠️  No K2_EMAIL/K2_PASSWORD env vars found"
-        echo "📝 Please create accounts.txt manually:"
-        echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+    echo "✅ accounts.txt already exists"
+    
+    # Validate the existing file
+    if grep -q "your@email.com\|yourpassword" accounts.txt 2>/dev/null; then
+        echo ""
+        echo "⚠️  Warning: accounts.txt contains placeholder credentials!"
+        echo ""
+        read -p "Would you like to update with real credentials? (y/n): " response
+        
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            prompt_for_credentials
+        fi
     fi
 fi
 
