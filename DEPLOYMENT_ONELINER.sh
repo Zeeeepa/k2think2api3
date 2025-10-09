@@ -114,17 +114,25 @@ if [ -f ".server.pid" ]; then
 fi
 
 # Start server in background (with venv activated and .env loaded)
-# Load environment variables and start server directly in subshell
-# This ensures env vars are properly available to the Python process
-source .venv/bin/activate
+# Create a permanent start script that properly loads environment
+cat > start_server.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
 set -a
 source .env
 set +a
+source .venv/bin/activate
+exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT"
+EOF
+chmod +x start_server.sh
 
-# Start server with environment variables properly loaded
-nohup python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT" > server.log 2>&1 &
+# Start the server using the script
+nohup ./start_server.sh > server.log 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > .server.pid
+
+# Give the server a moment to start
+sleep 2
 
 # Wait for server to start
 echo "   Waiting for server to initialize..."
