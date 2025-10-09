@@ -38,6 +38,39 @@
 
 ## 快速开始
 
+### ⚡ 一键部署脚本 (最简单！)
+
+使用我们的自动化部署脚本，几秒钟内完成所有设置：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/k2think_deploy.sh | bash
+```
+
+**从指定分支部署：**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/k2think_deploy.sh | bash -s YOUR_BRANCH_NAME
+```
+
+脚本会自动完成：
+- ✅ 检查 Python 3.8+ 安装
+- ✅ 克隆代码仓库
+- ✅ 创建虚拟环境
+- ✅ 安装所有依赖
+- ✅ 配置环境文件
+- ✅ 创建 systemd 服务
+- ✅ 生成启动脚本
+
+**部署后，只需配置 token 并启动：**
+```bash
+cd k2think2api3
+echo 'your-k2think-token' > tokens.txt  # 添加你的 token
+./start_server.sh                        # 启动服务器！
+```
+
+---
+
+### 🧪 快速测试部署 (含自动测试)
+
 ### 🚀 一键部署 (推荐)
 
 最简单的方式！使用 `csds.sh` 脚本自动完成克隆、设置、部署和测试：
