@@ -113,7 +113,8 @@ if [ -f ".server.pid" ]; then
     fi
 fi
 
-# Start server in background
+# Start server in background (with venv activated)
+source .venv/bin/activate
 nohup python3 -m uvicorn src.main:app --host 0.0.0.0 --port $PORT > server.log 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > .server.pid
@@ -191,4 +192,3 @@ echo ""
 echo -e "${GREEN}🔗 Health Check:${NC}"
 echo "   curl http://localhost:$PORT/health"
 echo ""
-
