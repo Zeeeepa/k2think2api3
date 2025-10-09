@@ -7,7 +7,13 @@ echo "====================================="
 # Check if setup was run
 if [ ! -d "data" ] || [ ! -f ".env" ]; then
     echo "⚠️  Setup not complete. Running setup first..."
-    ./setup.sh
+    bash setup.sh
+fi
+
+# Activate virtual environment if it exists
+if [ -d "venv" ]; then
+    echo "✨ Activating virtual environment..."
+    source venv/bin/activate
 fi
 
 # Load environment variables
@@ -73,4 +79,3 @@ else
     rm .server.pid
     exit 1
 fi
-
