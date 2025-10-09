@@ -114,24 +114,17 @@ if [ -f ".server.pid" ]; then
 fi
 
 # Start server in background (with venv activated and .env loaded)
+# Load environment variables and start server directly in subshell
+# This ensures env vars are properly available to the Python process
 source .venv/bin/activate
-# Create a wrapper script to ensure environment is properly loaded
-cat > start_server.sh << 'WRAPPER_EOF'
-#!/bin/bash
 set -a
 source .env
 set +a
-source .venv/bin/activate
-# Debug: Log what environment variables are loaded
-echo "DEBUG: VALID_API_KEY=${VALID_API_KEY}" >> server_debug.log
-echo "DEBUG: PORT=${PORT}" >> server_debug.log
-exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT"
-WRAPPER_EOF
-chmod +x start_server.sh
-nohup ./start_server.sh > server.log 2>&1 &
+
+# Start server with environment variables properly loaded
+nohup python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT" > server.log 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > .server.pid
-rm start_server.sh  # Clean up
 
 # Wait for server to start
 echo "   Waiting for server to initialize..."
