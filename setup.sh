@@ -8,6 +8,19 @@ echo "===================================="
 echo "📋 Checking Python version..."
 python3 --version || { echo "❌ Python 3 not found!"; exit 1; }
 
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "🔧 Creating virtual environment..."
+    python3 -m venv venv || {
+        echo "⚠️  Failed to create venv, trying with --system-site-packages"
+        python3 -m venv --system-site-packages venv
+    }
+fi
+
+# Activate virtual environment
+echo "✨ Activating virtual environment..."
+source venv/bin/activate
+
 # Install dependencies
 echo "📦 Installing Python dependencies..."
 pip install -r requirements.txt

@@ -3,6 +3,11 @@
 echo "🧪 K2Think API - Test Request Script"
 echo "====================================="
 
+# Activate virtual environment if it exists
+if [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
 # Load environment variables
 if [ -f ".env" ]; then
     export $(cat .env | grep -v '^#' | xargs)
@@ -70,4 +75,3 @@ rm /tmp/test_k2think.py
 
 echo ""
 echo "✅ Test complete!"
-
