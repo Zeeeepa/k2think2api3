@@ -122,6 +122,9 @@ set -a
 source .env
 set +a
 source .venv/bin/activate
+# Debug: Log what environment variables are loaded
+echo "DEBUG: VALID_API_KEY=${VALID_API_KEY}" >> server_debug.log
+echo "DEBUG: PORT=${PORT}" >> server_debug.log
 exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT"
 WRAPPER_EOF
 chmod +x start_server.sh
