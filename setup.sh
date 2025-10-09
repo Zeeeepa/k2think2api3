@@ -46,6 +46,13 @@ fi
 if [ ! -f ".env" ]; then
     echo "📝 Creating .env configuration file..."
     TIMESTAMP=$(date +%s)
+    
+    # Check if accounts.txt exists to determine auto-update setting
+    AUTO_UPDATE="false"
+    if [ -f "accounts.txt" ]; then
+        AUTO_UPDATE="true"
+    fi
+    
     cat > .env << EOF
 # API Authentication
 VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
@@ -54,13 +61,14 @@ VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
 PORT=7000
 
 # Token Management
-ENABLE_TOKEN_AUTO_UPDATE=true
+# Set to true if you have accounts.txt with K2 credentials
+ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE
 
 # Optional: Proxy settings (if needed)
 # HTTP_PROXY=http://proxy:port
 # HTTPS_PROXY=https://proxy:port
 EOF
-    echo "✅ .env file created"
+    echo "✅ .env file created (ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE)"
 else
     echo "ℹ️  .env file already exists"
 fi
@@ -76,6 +84,10 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "📚 Next steps:"
-echo "   1. Edit accounts.txt if needed (add K2 credentials)"
-echo "   2. Run ./deploy.sh to start the server"
-echo "   3. Run ./send_request.sh to test the API"
+echo "   1. Run ./deploy.sh to start the server"
+echo "   2. Run ./send_request.sh to test the API"
+echo ""
+echo "💡 Optional: Enable K2 credentials auto-update"
+echo "   1. Create accounts.txt with format: {\"email\": \"your@email.com\", \"k2_password\": \"yourpassword\"}"
+echo "   2. Edit .env and set ENABLE_TOKEN_AUTO_UPDATE=true"
+echo "   3. Restart the server with ./deploy.sh"
