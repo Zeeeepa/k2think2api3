@@ -113,8 +113,9 @@ if [ -f ".server.pid" ]; then
     fi
 fi
 
-# Start server in background (with venv activated)
+# Start server in background (with venv activated and .env loaded)
 source .venv/bin/activate
+export $(grep -v '^#' .env | xargs)
 nohup python3 -m uvicorn src.main:app --host 0.0.0.0 --port $PORT > server.log 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > .server.pid
