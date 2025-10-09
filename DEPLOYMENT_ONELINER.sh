@@ -115,10 +115,20 @@ fi
 
 # Start server in background (with venv activated and .env loaded)
 source .venv/bin/activate
-export $(grep -v '^#' .env | xargs)
-nohup python3 -m uvicorn src.main:app --host 0.0.0.0 --port $PORT > server.log 2>&1 &
+# Create a wrapper script to ensure environment is properly loaded
+cat > start_server.sh << 'WRAPPER_EOF'
+#!/bin/bash
+set -a
+source .env
+set +a
+source .venv/bin/activate
+exec python3 -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT"
+WRAPPER_EOF
+chmod +x start_server.sh
+nohup ./start_server.sh > server.log 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > .server.pid
+rm start_server.sh  # Clean up
 
 # Wait for server to start
 echo "   Waiting for server to initialize..."
