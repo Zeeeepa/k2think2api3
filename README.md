@@ -38,6 +38,84 @@
 
 ## 快速开始
 
+### 🚀 一键部署 (推荐)
+
+最简单的方式！使用 `csds.sh` 脚本自动完成克隆、设置、部署和测试：
+```bash
+# 下载脚本
+curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/csds.sh -o csds.sh
+chmod +x csds.sh
+
+# 运行（默认使用 main 分支）
+bash csds.sh
+
+# 或指定特定分支
+bash csds.sh codegen-bot/add-deployment-scripts-1759969334
+```
+
+**使用方式：**
+- `bash csds.sh` - 使用 main 分支部署
+- `bash csds.sh <branch-name>` - 使用指定分支部署
+
+```
+
+**脚本会自动完成以下操作：**
+1. 📦 克隆仓库（如果还未克隆）
+2. ⚙️ 安装所有依赖
+3. 🔧 创建配置文件
+4. 🎯 启动服务器（后台运行）
+5. 📤 发送测试请求并显示实际响应
+
+**示例输出：**
+```
+🚀 K2Think API - One-Command Deployment (CSDS)
+===============================================
+
+📦 Cloning repository...
+✨ Running setup...
+🎯 Starting server...
+📤 Sending test request...
+
+============================================================
+📥 RESPONSE RECEIVED
+============================================================
+Model: MBZUAI-IFM/K2-Think
+ID: chatcmpl-1759969121
+
+Content:
+------------------------------------------------------------
+<think>...</think>
+I am K2-Think, a model developed by MBZUAI IFM.
+------------------------------------------------------------
+
+Token Usage:
+  • Prompt tokens: 434
+  • Completion tokens: 173
+  • Total tokens: 607
+============================================================
+
+✅ Deployment Complete!
+🌐 Server is running at: http://localhost:7000
+```
+
+**服务器会继续在后台运行！** 你可以立即开始使用：
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:7000/v1",
+    api_key="test-key-123"
+)
+
+response = client.chat.completions.create(
+    model="MBZUAI-IFM/K2-Think",
+    messages=[{"role": "user", "content": "What is your model name?"}]
+)
+
+print(response.choices[0].message.content)
+```
+
 ### 本地运行
 
 1. **安装依赖**
