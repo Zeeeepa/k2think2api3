@@ -267,19 +267,70 @@ echo "   • Restart:       cd ${PROJECT_DIR} && bash scripts/deploy.sh"
 echo "   • Health check:  curl ${BASE_URL}/health"
 echo ""
 
+# Create Python wrapper script for easy execution
+log_info "Creating Python wrapper script..."
+cat > "${PROJECT_DIR}/python-k2" << 'WRAPPER_EOF'
+#!/bin/bash
+# Auto-activate venv and run Python with OpenAI configured
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/venv/bin/activate" 2>/dev/null
+WRAPPER_EOF
+
+# Add environment variables to wrapper
+if [ -n "$API_KEY" ]; then
+    echo "export OPENAI_API_KEY=\"${API_KEY}\"" >> "${PROJECT_DIR}/python-k2"
+fi
+echo "export OPENAI_BASE_URL=\"${BASE_URL}/v1\"" >> "${PROJECT_DIR}/python-k2"
+echo 'python3 "$@"' >> "${PROJECT_DIR}/python-k2"
+chmod +x "${PROJECT_DIR}/python-k2"
+log_success "Python wrapper created: ${PROJECT_DIR}/python-k2"
+echo ""
+
+# Create activation script for current shell
+log_info "Creating shell activation script..."
+cat > "${PROJECT_DIR}/activate-k2.sh" << ACTIVATE_EOF
+#!/bin/bash
+# Source this file to activate K2Think environment in current shell
+source "${PROJECT_DIR}/venv/bin/activate"
+ACTIVATE_EOF
+
+if [ -n "$API_KEY" ]; then
+    echo "export OPENAI_API_KEY=\"${API_KEY}\"" >> "${PROJECT_DIR}/activate-k2.sh"
+fi
+echo "export OPENAI_BASE_URL=\"${BASE_URL}/v1\"" >> "${PROJECT_DIR}/activate-k2.sh"
+echo 'echo "✅ K2Think environment activated!"' >> "${PROJECT_DIR}/activate-k2.sh"
+echo 'echo "🐍 Python: $(which python3)"' >> "${PROJECT_DIR}/activate-k2.sh"
+echo 'echo "🔑 API Key: $OPENAI_API_KEY"' >> "${PROJECT_DIR}/activate-k2.sh"
+echo 'echo "🌐 Base URL: $OPENAI_BASE_URL"' >> "${PROJECT_DIR}/activate-k2.sh"
+
+log_success "Shell activation script created"
+echo ""
+
 # Environment variables
-echo -e "${CYAN}🔐 Set Environment Variables:${NC}"
+echo -e "${CYAN}🔐 Environment Setup:${NC}"
+echo ""
+echo -e "${GREEN}Option 1: Use Python wrapper (Recommended)${NC}"
+echo "   ${PROJECT_DIR}/python-k2 your_script.py"
+echo "   ${PROJECT_DIR}/python-k2 -c \"from openai import OpenAI; print('Works!')\""
+echo ""
+echo -e "${GREEN}Option 2: Activate environment in current shell${NC}"
+echo "   source ${PROJECT_DIR}/activate-k2.sh"
+echo "   python3 your_script.py"
+echo ""
+echo -e "${GREEN}Option 3: Manual activation${NC}"
+echo "   source ${PROJECT_DIR}/venv/bin/activate"
 if [ -n "$API_KEY" ]; then
     echo "   export OPENAI_API_KEY=\"${API_KEY}\""
 fi
 echo "   export OPENAI_BASE_URL=\"${BASE_URL}/v1\""
+echo "   python3 your_script.py"
 echo ""
 
 # Final status
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║  🌟 Server is RUNNING and ready for requests! 🌟          ║"
 echo "║                                                            ║"
-echo "║  Copy the examples above and start using the API! 🚀      ║"
+echo "║  Use: ${PROJECT_DIR}/python-k2 your_script.py 🚀           ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
