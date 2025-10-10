@@ -29,23 +29,54 @@ pip install -r requirements.txt
 echo "📁 Creating data directory..."
 mkdir -p data
 
+# Create empty tokens.txt if it doesn't exist
+if [ ! -f "tokens.txt" ]; then
+    echo "🔑 Creating empty tokens.txt file..."
+    echo '[]' > tokens.txt
+    echo "✅ tokens.txt created (empty array - will be populated when tokens are available)"
+fi
+
 # Setup accounts file if K2 credentials are available
-if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
-    echo "🔑 Creating accounts.txt from environment variables..."
-    echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
-    echo "✅ accounts.txt created"
-else
-    if [ ! -f "accounts.txt" ]; then
-        echo "⚠️  No K2_EMAIL/K2_PASSWORD env vars found"
-        echo "📝 Please create accounts.txt manually:"
-        echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+if [ ! -f "accounts.txt" ]; then
+    if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
+        echo "🔑 Creating accounts.txt from environment variables..."
+        echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
+        echo "✅ accounts.txt created"
+    else
+        echo ""
+        echo "🔑 K2 Account Setup Required"
+        echo "================================"
+        echo "Please enter your K2 credentials (or press Ctrl+C to skip):"
+        echo ""
+        
+        read -p "📧 Email login: " user_email
+        read -sp "🔒 Password: " user_password
+        echo ""
+        
+        if [ ! -z "$user_email" ] && [ ! -z "$user_password" ]; then
+            echo "{\"email\": \"$user_email\", \"k2_password\": \"$user_password\"}" > accounts.txt
+            echo "✅ accounts.txt created with your credentials"
+        else
+            echo "⚠️  Skipped credential input"
+            echo "📝 Note: You can create accounts.txt manually later with format:"
+            echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+        fi
     fi
+else
+    echo "✅ accounts.txt already exists"
 fi
 
 # Create .env file
 if [ ! -f ".env" ]; then
     echo "📝 Creating .env configuration file..."
     TIMESTAMP=$(date +%s)
+    
+    # Check if accounts.txt exists to determine auto-update setting
+    AUTO_UPDATE="false"
+    if [ -f "accounts.txt" ]; then
+        AUTO_UPDATE="true"
+    fi
+    
     cat > .env << EOF
 # API Authentication
 VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
@@ -54,13 +85,14 @@ VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
 PORT=7000
 
 # Token Management
-ENABLE_TOKEN_AUTO_UPDATE=true
+# Set to true if you have accounts.txt with K2 credentials
+ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE
 
 # Optional: Proxy settings (if needed)
 # HTTP_PROXY=http://proxy:port
 # HTTPS_PROXY=https://proxy:port
 EOF
-    echo "✅ .env file created"
+    echo "✅ .env file created (ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE)"
 else
     echo "ℹ️  .env file already exists"
 fi
@@ -76,6 +108,10 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "📚 Next steps:"
-echo "   1. Edit accounts.txt if needed (add K2 credentials)"
-echo "   2. Run ./deploy.sh to start the server"
-echo "   3. Run ./send_request.sh to test the API"
+echo "   1. Run ./deploy.sh to start the server"
+echo "   2. Run ./send_request.sh to test the API"
+echo ""
+echo "💡 Optional: Enable K2 credentials auto-update"
+echo "   1. Create accounts.txt with format: {\"email\": \"your@email.com\", \"k2_password\": \"yourpassword\"}"
+echo "   2. Edit .env and set ENABLE_TOKEN_AUTO_UPDATE=true"
+echo "   3. Restart the server with ./deploy.sh"
