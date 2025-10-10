@@ -206,27 +206,57 @@ fi
 echo ""
 echo ""
 
-# Test the API
-log_info "Running live API test..."
+# Test the API using Python (like send_request.sh)
+log_info "Running live API test with Python SDK..."
 echo ""
 
-if [ -n "$API_KEY" ]; then
-    RESPONSE=$(curl -s "${BASE_URL}/v1/chat/completions" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer ${API_KEY}" \
-      -d '{
-        "model": "MBZUAI-IFM/K2-Think",
-        "messages": [{"role": "user", "content": "Say hello in one sentence"}],
-        "stream": false
-      }')
+if [ -n "$API_KEY" ] && [ -d "venv" ]; then
+    # Activate venv
+    source venv/bin/activate 2>/dev/null || true
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}📥 Live API Response:${NC}"
-        echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
-        echo ""
-    else
-        log_warning "Could not complete test request"
-    fi
+    # Create and run test script
+    cat > /tmp/k2think_test.py << PYEOF
+from openai import OpenAI
+import sys
+
+try:
+    client = OpenAI(
+        base_url="${BASE_URL}/v1",
+        api_key="${API_KEY}"
+    )
+    
+    print("🔄 Calling K2Think API...")
+    print()
+    
+    response = client.chat.completions.create(
+        model="MBZUAI-IFM/K2-Think",
+        messages=[{"role": "user", "content": "Say hello and tell me your name in one sentence"}]
+    )
+    
+    print("=" * 70)
+    print("📥 LIVE API RESPONSE")
+    print("=" * 70)
+    print(f"Model: {response.model}")
+    print(f"ID: {response.id}")
+    print()
+    print("Content:")
+    print("-" * 70)
+    print(response.choices[0].message.content)
+    print("-" * 70)
+    print()
+    print("Token Usage:")
+    print(f"  • Prompt: {response.usage.prompt_tokens}")
+    print(f"  • Completion: {response.usage.completion_tokens}")
+    print(f"  • Total: {response.usage.total_tokens}")
+    print("=" * 70)
+except Exception as e:
+    print(f"❌ Error: {e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+    
+    python3 /tmp/k2think_test.py 2>&1 || log_warning "API test failed"
+    rm -f /tmp/k2think_test.py
+    echo ""
 fi
 
 # Management commands
@@ -255,4 +285,3 @@ echo ""
 
 log_success "All systems operational!"
 echo ""
-
