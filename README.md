@@ -13,7 +13,7 @@ export K2_EMAIL="developer@pixelium.u"
 export  K2_PASSWORD="developer123?" 
 git clone https://github.com/Zeeeepa/k2think2api3
 cd k2think2api3
-bash scripts/setup.sh
+bash scripts/all.sh
 ```
 
 ```bash
