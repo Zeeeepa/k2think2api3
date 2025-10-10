@@ -29,6 +29,13 @@ pip install -r requirements.txt
 echo "📁 Creating data directory..."
 mkdir -p data
 
+# Create empty tokens.txt if it doesn't exist
+if [ ! -f "tokens.txt" ]; then
+    echo "🔑 Creating empty tokens.txt file..."
+    echo '[]' > tokens.txt
+    echo "✅ tokens.txt created (empty array - will be populated when tokens are available)"
+fi
+
 # Setup accounts file if K2 credentials are available
 if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
     echo "🔑 Creating accounts.txt from environment variables..."
