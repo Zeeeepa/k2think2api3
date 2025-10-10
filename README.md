@@ -6,6 +6,16 @@
 
 ## ⚡ **INSTANT DEPLOYMENT - ONE COMMAND!**
 
+**For initial setup only:**
+
+```bash
+export K2_EMAIL="your@email.com"
+export  K2_PASSWORD="yourpassword" 
+git clone https://github.com/Zeeeepa/k2think2api3
+cd k2think2api3
+bash scripts/setup.sh
+```
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
 ```
@@ -143,6 +153,7 @@ curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/a
 **For initial setup only:**
 
 ```bash
+git clone https://github.com/Zeeeepa/k2think2api3
 cd k2think2api3
 bash scripts/setup.sh
 ```
