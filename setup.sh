@@ -37,16 +37,33 @@ if [ ! -f "tokens.txt" ]; then
 fi
 
 # Setup accounts file if K2 credentials are available
-if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
-    echo "🔑 Creating accounts.txt from environment variables..."
-    echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
-    echo "✅ accounts.txt created"
-else
-    if [ ! -f "accounts.txt" ]; then
-        echo "⚠️  No K2_EMAIL/K2_PASSWORD env vars found"
-        echo "📝 Please create accounts.txt manually:"
-        echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+if [ ! -f "accounts.txt" ]; then
+    if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
+        echo "🔑 Creating accounts.txt from environment variables..."
+        echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
+        echo "✅ accounts.txt created"
+    else
+        echo ""
+        echo "🔑 K2 Account Setup Required"
+        echo "================================"
+        echo "Please enter your K2 credentials (or press Ctrl+C to skip):"
+        echo ""
+        
+        read -p "📧 Email login: " user_email
+        read -sp "🔒 Password: " user_password
+        echo ""
+        
+        if [ ! -z "$user_email" ] && [ ! -z "$user_password" ]; then
+            echo "{\"email\": \"$user_email\", \"k2_password\": \"$user_password\"}" > accounts.txt
+            echo "✅ accounts.txt created with your credentials"
+        else
+            echo "⚠️  Skipped credential input"
+            echo "📝 Note: You can create accounts.txt manually later with format:"
+            echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+        fi
     fi
+else
+    echo "✅ accounts.txt already exists"
 fi
 
 # Create .env file
