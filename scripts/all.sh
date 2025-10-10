@@ -364,234 +364,389 @@ test_api_with_send_request() {
     fi
 }
 
-# Create utility scripts
-create_utility_scripts() {
-    log_step "Creating utility scripts..."
-    
-    # Create server management script
-    cat > "$PROJECT_DIR/manage-server.sh" << 'EOF'
-#!/bin/bash
+# Server management functions (merged from manage-server.sh)
+server_start() {
+    log_step "Starting K2Think API server..."
+    deploy_server
+}
 
-# K2Think API Server Management Script
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$SCRIPT_DIR/.server.pid"
-LOG_FILE="$SCRIPT_DIR/server.log"
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
-log_success() { echo -e "${GREEN}✅ $1${NC}"; }
-log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
-log_error() { echo -e "${RED}❌ $1${NC}"; }
-
-case "${1:-}" in
-    start)
-        log_info "Starting K2Think API server..."
-        cd "$SCRIPT_DIR"
-        source venv/bin/activate
-        nohup python3 k2think_proxy.py &> "$LOG_FILE" &
-        echo $! > "$PID_FILE"
-        log_success "Server started"
-        ;;
-    stop)
-        if [ -f "$PID_FILE" ]; then
-            pid=$(cat "$PID_FILE")
-            if kill -0 "$pid" 2>/dev/null; then
-                log_info "Stopping server (PID: $pid)..."
-                kill "$pid"
-                rm -f "$PID_FILE"
-                log_success "Server stopped"
-            else
-                log_warning "Server is not running"
-                rm -f "$PID_FILE"
+server_stop() {
+    log_step "Stopping server..."
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            log_command "Stopping server (PID: $pid)..."
+            kill "$pid"
+            sleep 2
+            if ps -p "$pid" > /dev/null 2>&1; then
+                log_warning "Force killing server..."
+                kill -9 "$pid" 2>/dev/null
             fi
-        else
-            log_warning "PID file not found"
-        fi
-        ;;
-    restart)
-        "$0" stop
-        sleep 2
-        "$0" start
-        ;;
-    status)
-        if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-            log_success "Server is running (PID: $(cat "$PID_FILE"))"
+            rm -f "$PID_FILE"
+            log_success "Server stopped"
         else
             log_warning "Server is not running"
+            rm -f "$PID_FILE"
         fi
-        ;;
-    logs)
-        if [ -f "$LOG_FILE" ]; then
-            tail -f "$LOG_FILE"
+    else
+        log_warning "PID file not found"
+    fi
+}
+
+server_restart() {
+    log_step "Restarting server..."
+    server_stop
+    sleep 2
+    server_start
+}
+
+server_status() {
+    log_info "Checking server status..."
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        log_success "Server is running (PID: $pid)"
+
+        # Load port from .env if available
+        if [ -f "$ENV_FILE" ]; then
+            set -a
+            source "$ENV_FILE"
+            set +a
+        fi
+        local port=${PORT:-7001}
+
+        # Health check
+        if curl -s "http://localhost:$port/health" &> /dev/null; then
+            log_success "Server health check passed"
         else
-            log_error "Log file not found: $LOG_FILE"
+            log_warning "Server health check failed"
         fi
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|status|logs}"
-        echo "  start   - Start the server"
-        echo "  stop    - Stop the server"
-        echo "  restart - Restart the server"
-        echo "  status  - Show server status"
-        echo "  logs    - Show server logs"
+    else
+        log_warning "Server is not running"
+    fi
+}
+
+server_logs() {
+    if [ -f "$SERVER_LOG" ]; then
+        log_info "Showing server logs (Ctrl+C to exit)..."
+        tail -f "$SERVER_LOG"
+    else
+        log_error "Log file not found: $SERVER_LOG"
+    fi
+}
+
+server_test() {
+    log_info "Testing API..."
+    if [ -f "$SCRIPT_DIR/send_request.sh" ]; then
+        bash "$SCRIPT_DIR/send_request.sh"
+    else
+        log_error "send_request.sh not found"
+    fi
+}
+
+# Environment activation (merged from activate-k2.sh)
+activate_environment() {
+    log_step "Activating K2Think environment..."
+
+    # Check if virtual environment exists
+    if [ ! -d "$VENV_DIR" ]; then
+        log_error "Virtual environment not found at $VENV_DIR"
+        log_info "Please run deployment first: bash $0"
+        return 1
+    fi
+
+    # Activate virtual environment
+    source "$VENV_DIR/bin/activate"
+    log_success "Virtual environment activated"
+
+    # Load configuration
+    if [ -f "$ENV_FILE" ]; then
+        set -a
+        source "$ENV_FILE"
+        set +a
+        log_success "Environment variables loaded"
+    else
+        log_error "Environment file not found: $ENV_FILE"
+        return 1
+    fi
+
+    # Set OpenAI environment variables
+    export OPENAI_API_KEY="${VALID_API_KEY:-}"
+    export OPENAI_BASE_URL="http://localhost:${PORT:-7001}/v1"
+
+    echo
+    echo -e "${BLUE}📋 Environment Status:${NC}"
+    echo "  Python: $(which python3)"
+    echo "  API Key: ${OPENAI_API_KEY:0:20}..."
+    echo "  Base URL: $OPENAI_BASE_URL"
+    echo
+    echo -e "${BLUE}💡 Usage tips:${NC}"
+    echo "  • OpenAI client will work automatically with environment variables"
+    echo "  • Run Python scripts: python3 your_script.py"
+    echo "  • Or use the wrapper: $0 python your_script.py"
+    echo
+
+    log_success "K2Think environment activated!"
+}
+
+# Python wrapper (merged from python-k2)
+run_python() {
+    # Ensure environment is set up
+    if [ ! -d "$VENV_DIR" ]; then
+        log_error "Virtual environment not found. Please run deployment first."
         exit 1
-        ;;
-esac
-EOF
-    
-    chmod +x "$PROJECT_DIR/manage-server.sh"
-    
-    # Create Python utility script
-    cat > "$PROJECT_DIR/python-k2" << 'EOF'
+    fi
+
+    # Activate virtual environment
+    source "$VENV_DIR/bin/activate" || {
+        log_error "Failed to activate virtual environment"
+        exit 1
+    }
+
+    # Load configuration
+    if [ -f "$ENV_FILE" ]; then
+        set -a
+        source "$ENV_FILE"
+        set +a
+    fi
+
+    # Set OpenAI environment variables
+    export OPENAI_API_KEY="${VALID_API_KEY:-}"
+    export OPENAI_BASE_URL="http://localhost:${PORT:-7001}/v1"
+
+    # Execute Python with all arguments
+    log_command "Running Python with: $*"
+    python3 "$@"
+}
+
+# Update quick-test.py to be standalone
+update_quick_test() {
+    log_step "Updating quick-test.py..."
+
+    cat > "$PROJECT_DIR/quick-test.py" << 'EOF'
 #!/usr/bin/env python3
+"""
+Quick K2Think API test script
+Run with: bash scripts/all.sh test-quick
+Or directly: python3 quick-test.py (if environment is activated)
+"""
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from venv import Activation
+def test_with_openai():
+    try:
+        from openai import OpenAI
+        client = OpenAI()  # Uses environment variables
 
-# Activate virtual environment
-activate_path = os.path.join(os.path.dirname(__file__), 'venv', 'bin', 'activate_this.py')
-if os.path.exists(activate_path):
-    with open(activate_path) as f:
-        exec(f.read(), {'__file__': activate_path})
+        print("🧪 Quick K2Think API Test")
+        print("=" * 40)
 
-# Import and run the main application
+        response = client.chat.completions.create(
+            model="MBZUAI-IFM/K2-Think",
+            messages=[{"role": "user", "content": "Hello! What are you?"}],
+            max_tokens=100
+        )
+
+        print(f"Response: {response.choices[0].message.content}")
+        print(f"Tokens used: {response.usage.total_tokens}")
+        print("✅ Test successful!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Test failed: {e}")
+        return False
+
+def test_with_requests():
+    try:
+        import requests
+        import json
+
+        # Try to get API key from environment
+        api_key = os.environ.get('VALID_API_KEY', 'sk-k2think-proxy-default')
+
+        print("🧪 Quick K2Think API Test (Direct HTTP)")
+        print("=" * 50)
+
+        response = requests.post(
+            "http://localhost:7001/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            },
+            json={
+                "model": "MBZUAI-IFM/K2-Think",
+                "messages": [{"role": "user", "content": "Hello! What are you?"}],
+                "max_tokens": 100
+            },
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            content = data['choices'][0]['message']['content']
+            tokens = data['usage']['total_tokens']
+
+            print(f"Response: {content}")
+            print(f"Tokens used: {tokens}")
+            print("✅ Test successful!")
+            return True
+        else:
+            print(f"❌ HTTP Error {response.status_code}: {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Request failed: {e}")
+        return False
+
+def main():
+    print("Testing K2Think API connection...")
+
+    # Try OpenAI client first
+    if test_with_openai():
+        return
+
+    # Fallback to direct requests
+    print("\n🔄 Falling back to direct HTTP request...")
+    if test_with_requests():
+        return
+
+    print("\n❌ All test methods failed")
+    print("Please ensure:")
+    print("1. Server is running: bash scripts/all.sh start")
+    print("2. Environment is activated: bash scripts/all.sh activate")
+    print("3. Check server logs: bash scripts/all.sh logs")
+    sys.exit(1)
+
 if __name__ == "__main__":
-    from k2think_proxy import app
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7001)
+    main()
 EOF
-    
-    chmod +x "$PROJECT_DIR/python-k2"
-    
-    # Create activation script
-    cat > "$PROJECT_DIR/activate-k2.sh" << 'EOF'
-#!/bin/bash
 
-# K2Think API Environment Activation Script
+    chmod +x "$PROJECT_DIR/quick-test.py"
+    log_success "quick-test.py updated"
+}
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/venv"
-ENV_FILE="$SCRIPT_DIR/.env"
+# Quick test runner
+run_quick_test() {
+    log_step "Running quick API test..."
 
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+    # Ensure environment is set up for the test
+    if [ ! -d "$VENV_DIR" ]; then
+        log_error "Virtual environment not found. Please run deployment first."
+        exit 1
+    fi
 
-echo -e "${BLUE}🔧 Activating K2Think API environment...${NC}"
-
-# Activate virtual environment
-if [ -d "$VENV_DIR" ]; then
+    # Activate environment and set variables
     source "$VENV_DIR/bin/activate"
-    echo -e "${GREEN}✅ Virtual environment activated${NC}"
-else
-    echo -e "\033[0;31m❌ Virtual environment not found${NC}"
-    exit 1
-fi
-
-# Export environment variables
-if [ -f "$ENV_FILE" ]; then
-    set -a
-    source "$ENV_FILE"
-    set +a
-    echo -e "${GREEN}✅ Environment variables loaded${NC}"
-else
-    echo -e "\033[0;31m❌ Environment file not found${NC}"
-    exit 1
-fi
-
-# Show status
-echo -e "${BLUE}📋 Environment Status:${NC}"
-echo "  Python: $(which python3)"
-echo "  API Key: ${VALID_API_KEY:0:20}..."
-echo "  Server URL: http://localhost:${PORT:-7001}"
-echo
-echo -e "${BLUE}🚀 Ready to run K2Think API!${NC}"
-echo "  Start server: python3 k2think_proxy.py"
-echo "  Test API: bash scripts/send_request.sh"
-EOF
-    
-    chmod +x "$PROJECT_DIR/activate-k2.sh"
-    
-    log_success "Utility scripts created"
-}
-
-# Display usage instructions
-display_usage_instructions() {
-    log_step "Displaying usage instructions..."
-    
-    echo
-    echo -e "${BOLD}${GREEN}🎉 K2Think API Proxy Deployment Complete!${NC}"
-    echo "=" * 50
-    echo
-    echo -e "${BLUE}📋 Server Information:${NC}"
-    echo "  🌐 Server URL: http://localhost:7001"
-    echo "  🔑 API Key: $(grep VALID_API_KEY "$ENV_FILE" | cut -d'=' -f2)"
-    echo "  📄 Log File: $SERVER_LOG"
-    echo "  🔧 PID File: $PID_FILE"
-    echo
-    echo -e "${BLUE}🚀 Quick Start Commands:${NC}"
-    echo "  1️⃣ Activate environment: source $PROJECT_DIR/activate-k2.sh"
-    echo "  2️⃣ Test API: bash $SCRIPT_DIR/send_request.sh"
-    echo "  3️⃣ Manage server: $PROJECT_DIR/manage-server.sh {start|stop|restart|status|logs}"
-    echo "  4️⃣ Run Python: $PROJECT_DIR/python-k2"
-    echo
-    echo -e "${BLUE}🔗 API Endpoints:${NC}"
-    echo "  💬 Chat: http://localhost:7001/v1/chat/completions"
-    echo "  📋 Models: http://localhost:7001/v1/models"
-    echo "  ❤️ Health: http://localhost:7001/health"
-    echo
-    echo -e "${BLUE}📚 Documentation:${NC}"
-    echo "  📖 Full docs: $PROJECT_DIR/CLAUDE.md"
-    echo "  📊 Deployment summary: $PROJECT_DIR/DEPLOYMENT_SUMMARY.md"
-    echo
-}
-
-# Show final status
-show_final_status() {
-    echo
-    log_step "Final status check..."
-    
-    # Check server status
-    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-        log_success "✅ Server is running"
-    else
-        log_warning "⚠️ Server is not running"
-    fi
-    
-    # Check token status
-    if [ -f "$DATA_DIR/tokens.txt" ] && [ -s "$DATA_DIR/tokens.txt" ]; then
-        local token_count
-        token_count=$(wc -l < "$DATA_DIR/tokens.txt")
-        log_success "✅ $token_count tokens available"
-    else
-        log_warning "⚠️ No tokens available - please add tokens to $DATA_DIR/tokens.txt"
-    fi
-    
-    # Check configuration
     if [ -f "$ENV_FILE" ]; then
-        log_success "✅ Configuration file exists"
-    else
-        log_warning "⚠️ Configuration file missing"
+        set -a
+        source "$ENV_FILE"
+        set +a
+        export OPENAI_API_KEY="${VALID_API_KEY:-}"
+        export OPENAI_BASE_URL="http://localhost:${PORT:-7001}/v1"
     fi
-    
-    log_success "Deployment process completed successfully!"
+
+    # Run the test
+    python3 "$PROJECT_DIR/quick-test.py"
 }
 
-# Main execution flow
-main() {
+# Show comprehensive help
+show_help() {
+    echo -e "${BOLD}${CYAN}K2Think API Proxy - All-in-One Management Script${NC}"
+    echo
+    echo -e "${BLUE}Usage:${NC}"
+    echo "  $0                    # Full deployment"
+    echo "  $0 [COMMAND]          # Run specific command"
+    echo
+    echo -e "${BLUE}Deployment Commands:${NC}"
+    echo "  deploy                # Deploy from scratch (default)"
+    echo "  setup                 # Quick setup (assumes deps installed)"
+    echo
+    echo -e "${BLUE}Server Management:${NC}"
+    echo "  start                 # Start the server"
+    echo "  stop                  # Stop the server"
+    echo "  restart               # Restart the server"
+    echo "  status                # Check server status"
+    echo "  logs                  # View server logs"
+    echo "  test                  # Test API with send_request.sh"
+    echo "  test-quick            # Quick API test"
+    echo
+    echo -e "${BLUE}Environment Commands:${NC}"
+    echo "  activate              # Activate environment (sourced)"
+    echo "  python [args]         # Run Python with environment set up"
+    echo "  shell                 # Start interactive shell with environment"
+    echo
+    echo -e "${BLUE}Utility Commands:${NC}"
+    echo "  update-test           # Update quick-test.py"
+    echo "  help, -h, --help      # Show this help"
+    echo
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  $0                    # Full deployment"
+    echo "  $0 start              # Start server"
+    echo "  $0 test-quick         # Quick API test"
+    echo "  $0 python script.py   # Run Python with environment"
+    echo "  source $0 activate    # Activate environment in current shell"
+    echo
+}
+
+# Interactive shell
+start_shell() {
+    log_step "Starting interactive shell with K2Think environment..."
+
+    # Ensure environment is set up
+    if [ ! -d "$VENV_DIR" ]; then
+        log_error "Virtual environment not found. Please run deployment first."
+        exit 1
+    fi
+
+    # Activate virtual environment
+    source "$VENV_DIR/bin/activate"
+
+    # Load configuration
+    if [ -f "$ENV_FILE" ]; then
+        set -a
+        source "$ENV_FILE"
+        set +a
+        export OPENAI_API_KEY="${VALID_API_KEY:-}"
+        export OPENAI_BASE_URL="http://localhost:${PORT:-7001}/v1"
+    fi
+
+    echo
+    echo -e "${GREEN}🚀 K2Think environment loaded!${NC}"
+    echo -e "${BLUE}Commands available:${NC}"
+    echo "  python3 your_script.py"
+    echo "  quick-test.py"
+    echo "  exit  (to leave shell)"
+    echo
+
+    # Start interactive shell
+    "${SHELL:-bash}"
+}
+
+# Quick setup (assumes dependencies are installed)
+quick_setup() {
+    log_step "Quick setup (assuming dependencies are installed)..."
+
+    setup_project_directory
+    setup_credentials
+    setup_configuration
+    acquire_tokens
+
+    log_success "Quick setup completed!"
+    echo
+    echo -e "${BLUE}Next steps:${NC}"
+    echo "  $0 start              # Start server"
+    echo "  $0 test-quick         # Test API"
+    echo "  source $0 activate    # Activate environment"
+}
+
+# Main deployment function
+deploy_full() {
     echo -e "${BOLD}${CYAN}🚀 K2Think API Proxy - Enhanced Deployment Script${NC}"
     echo "=" * 60
     echo
-    
+
     check_system_requirements
     setup_project_directory
     setup_credentials
@@ -601,12 +756,176 @@ main() {
     deploy_server
     create_deployment_summary
     test_api_with_send_request
-    create_utility_scripts
+    update_quick_test
     display_usage_instructions
     show_final_status
 }
 
-# Run main function if script is executed directly
+# Main command router
+main() {
+    # Parse command
+    local command="${1:-deploy}"
+
+    case "$command" in
+        # Deployment commands
+        "deploy"|"")
+            deploy_full
+            ;;
+        "setup")
+            echo -e "${BOLD}${CYAN}🔧 K2Think API Proxy - Quick Setup${NC}"
+            echo "=" * 40
+            quick_setup
+            ;;
+        # Server management
+        "start")
+            server_start
+            ;;
+        "stop")
+            server_stop
+            ;;
+        "restart")
+            server_restart
+            ;;
+        "status")
+            server_status
+            ;;
+        "logs")
+            server_logs
+            ;;
+        "test")
+            server_test
+            ;;
+        "test-quick")
+            run_quick_test
+            ;;
+        # Environment commands
+        "activate")
+            activate_environment
+            ;;
+        "python")
+            shift
+            run_python "$@"
+            ;;
+        "shell")
+            start_shell
+            ;;
+        # Utility commands
+        "update-test")
+            update_quick_test
+            ;;
+        "help"|"-h"|"--help")
+            show_help
+            ;;
+        *)
+            log_error "Unknown command: $command"
+            echo
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+
+# Enhanced usage instructions
+display_usage_instructions() {
+    echo -e "${CYAN}🚀 Usage Instructions:${NC}"
+    echo ""
+
+    echo -e "${GREEN}🎯 All-in-One Script Commands:${NC}"
+    echo "   bash scripts/all.sh deploy         # Full deployment"
+    echo "   bash scripts/all.sh start          # Start server"
+    echo "   bash scripts/all.sh stop           # Stop server"
+    echo "   bash scripts/all.sh status         # Check server status"
+    echo "   bash scripts/all.sh logs           # View server logs"
+    echo "   bash scripts/all.sh test           # Test API with send_request.sh"
+    echo "   bash scripts/all.sh test-quick     # Quick API test"
+    echo "   bash scripts/all.sh python script.py # Run Python with environment"
+    echo "   source bash scripts/all.sh activate # Activate environment"
+    echo ""
+
+    echo -e "${GREEN}🐍 Python Usage:${NC}"
+    echo "   bash scripts/all.sh python your_script.py"
+    echo "   bash scripts/all.sh test-quick           # Quick test"
+    echo "   python3 quick-test.py                    # Direct test (if env activated)"
+    echo ""
+
+    echo -e "${CYAN}📚 Python Code Examples:${NC}"
+    echo ""
+    echo "   # Basic usage"
+    echo "   from openai import OpenAI"
+    echo "   client = OpenAI()  # Uses environment variables"
+    echo ""
+    echo "   response = client.chat.completions.create("
+    echo "       model=\"MBZUAI-IFM/K2-Think\","
+    echo "       messages=[{\"role\": \"user\", \"content\": \"Hello!\"}]"
+    echo "   )"
+    echo "   print(response.choices[0].message.content)"
+    echo ""
+
+    echo "   # Streaming"
+    echo "   stream = client.chat.completions.create("
+    echo "       model=\"MBZUAI-IFM/K2-Think\","
+    echo "       messages=[{\"role\": \"user\", \"content\": \"Count to 5\"}],"
+    echo "       stream=True"
+    echo "   )"
+    echo "   for chunk in stream:"
+    echo "       if chunk.choices[0].delta.content:"
+    echo "           print(chunk.choices[0].delta.content, end=\"\")"
+    echo ""
+
+    echo -e "${CYAN}🌐 cURL Examples:${NC}"
+    echo ""
+    if [ -n "${API_KEY:-}" ]; then
+        cat << EOF
+   # Basic request
+   curl http://localhost:${PORT:-7001}/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer ${API_KEY}" \
+     -d '{
+       "model": "MBZUAI-IFM/K2-Think",
+       "messages": [{"role": "user", "content": "Hello!"}]
+     }'
+
+   # Models list
+   curl http://localhost:${PORT:-7001}/v1/models \
+     -H "Authorization: Bearer ${API_KEY}"
+
+   # Health check
+   curl http://localhost:${PORT:-7001}/health
+EOF
+    fi
+    echo ""
+}
+
+# Final status display
+show_final_status() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║  🌟 K2Think API Server is RUNNING and READY! 🌟          ║"
+    echo "║                                                            ║"
+    echo "║  Project: $PROJECT_DIR"
+    echo "║  Server:  http://localhost:${PORT:-7001}/v1"
+    echo "║  Health:  http://localhost:${PORT:-7001}/health"
+    echo "║                                                            ║"
+    echo "║  Quick Start: bash scripts/all.sh test-quick 🚀           ║"
+    echo "║  Management: bash scripts/all.sh {start|stop|status}       ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    echo -e "${YELLOW}📊 Quick Commands:${NC}"
+    echo "   • Test API:     bash scripts/all.sh test-quick"
+    echo "   • View logs:    bash scripts/all.sh logs"
+    echo "   • Server info:  bash scripts/all.sh status"
+    echo "   • Restart:      bash scripts/all.sh restart"
+    echo ""
+
+    echo -e "${CYAN}📚 Documentation:${NC}"
+    echo "   • Full docs:    See README.md and QUICKSTART.md"
+    echo "   • API reference: http://localhost:${PORT:-7001}/docs"
+    echo "   • Admin panel:  http://localhost:${PORT:-7001}/admin/tokens/stats"
+    echo ""
+}
+
+# Execute main function
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi

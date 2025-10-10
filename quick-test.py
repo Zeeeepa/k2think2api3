@@ -1,230 +1,96 @@
 #!/usr/bin/env python3
 """
-Quick test script for K2Think API Proxy
-Provides a simple Python interface to test the API
+Quick K2Think API test script
+Run with: bash scripts/all.sh test-quick
+Or directly: python3 quick-test.py (if environment is activated)
 """
 
 import sys
 import os
-import json
-import time
-from datetime import datetime
 
-# Add project directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Configuration
-API_URL = "http://localhost:7001/v1/chat/completions"
-API_KEY_FILE = ".env"
-DEFAULT_MESSAGE = "Hello! This is a quick test. Please respond briefly."
-DEFAULT_MODEL = "MBZUAI-IFM/K2-Think"
-
-# Colors
-class Colors:
-    RED = '\033[0;31m'
-    GREEN = '\033[0;32m'
-    YELLOW = '\033[1;33m'
-    BLUE = '\033[0;34m'
-    CYAN = '\033[0;36m'
-    MAGENTA = '\033[0;35m'
-    BOLD = '\033[1m'
-    NC = '\033[0m'
-
-def log_info(msg): print(f"{Colors.BLUE}ℹ️  {msg}{Colors.NC}")
-def log_success(msg): print(f"{Colors.GREEN}✅ {msg}{Colors.NC}")
-def log_warning(msg): print(f"{Colors.YELLOW}⚠️  {msg}{Colors.NC}")
-def log_error(msg): print(f"{Colors.RED}❌ {msg}{Colors.NC}")
-
-def load_api_key():
-    """Load API key from environment file"""
-    if os.path.exists(API_KEY_FILE):
-        with open(API_KEY_FILE) as f:
-            for line in f:
-                if line.startswith('VALID_API_KEY='):
-                    return line.strip().split('=', 1)[1]
-    return "sk-k2think-proxy-default"
-
-def test_connectivity():
-    """Test server connectivity"""
+def test_with_openai():
     try:
-        import requests
-        response = requests.get("http://localhost:7001/health", timeout=5)
-        if response.status_code == 200:
-            log_success("Server is reachable")
-            return True
-        else:
-            log_error(f"Server returned status {response.status_code}")
-            return False
+        from openai import OpenAI
+        client = OpenAI()  # Uses environment variables
+
+        print("🧪 Quick K2Think API Test")
+        print("=" * 40)
+
+        response = client.chat.completions.create(
+            model="MBZUAI-IFM/K2-Think",
+            messages=[{"role": "user", "content": "Hello! What are you?"}],
+            max_tokens=100
+        )
+
+        print(f"Response: {response.choices[0].message.content}")
+        print(f"Tokens used: {response.usage.total_tokens}")
+        print("✅ Test successful!")
+        return True
+
     except Exception as e:
-        log_error(f"Cannot connect to server: {e}")
+        print(f"❌ Test failed: {e}")
         return False
 
-def make_request(message, model, stream=False, max_tokens=1000, temperature=0.7):
-    """Make API request"""
-    import requests
-    
-    api_key = load_api_key()
-    
-    request_data = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": message
-            }
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "stream": stream
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    print(f"{Colors.MAGENTA}💻 Sending request...{Colors.NC}")
-    print(f"{Colors.MAGENTA}   Model: {model}{Colors.NC}")
-    print(f"{Colors.MAGENTA}   Message: {message}{Colors.NC}")
-    
-    start_time = time.time()
-    
+def test_with_requests():
     try:
-        if stream:
-            # Streaming request
-            print(f"{Colors.CYAN}🌊 Streaming Response:{Colors.NC}")
-            print()
-            
-            response = requests.post(API_URL, headers=headers, json=request_data, stream=True, timeout=30)
-            response.raise_for_status()
-            
-            full_response = ""
-            for line in response.iter_lines():
-                if line:
-                    line_str = line.decode('utf-8')
-                    if line_str.startswith('data: '):
-                        data_str = line_str[6:]  # Remove 'data: ' prefix
-                        if data_str != '[DONE]':
-                            try:
-                                data = json.loads(data_str)
-                                if 'choices' in data and len(data['choices']) > 0:
-                                    delta = data['choices'][0].get('delta', {})
-                                    if 'content' in delta:
-                                        content = delta['content']
-                                        print(content, end='', flush=True)
-                                        full_response += content
-                            except json.JSONDecodeError:
-                                continue
-            
-            print()
-            print()
-            log_success("Streaming completed")
-            return full_response
-            
-        else:
-            # Non-streaming request
-            response = requests.post(API_URL, headers=headers, json=request_data, timeout=30)
-            response.raise_for_status()
-            
-            end_time = time.time()
-            duration = end_time - start_time
-            
+        import requests
+        import json
+
+        # Try to get API key from environment
+        api_key = os.environ.get('VALID_API_KEY', 'sk-k2think-proxy-default')
+
+        print("🧪 Quick K2Think API Test (Direct HTTP)")
+        print("=" * 50)
+
+        response = requests.post(
+            "http://localhost:7001/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            },
+            json={
+                "model": "MBZUAI-IFM/K2-Think",
+                "messages": [{"role": "user", "content": "Hello! What are you?"}],
+                "max_tokens": 100
+            },
+            timeout=30
+        )
+
+        if response.status_code == 200:
             data = response.json()
-            
-            if 'choices' in data and len(data['choices']) > 0:
-                content = data['choices'][0]['message']['content']
-                print(f"{Colors.CYAN}📝 Response:{Colors.NC}")
-                print()
-                print(content)
-                print()
-                
-                # Show usage statistics
-                if 'usage' in data:
-                    usage = data['usage']
-                    print(f"{Colors.MAGENTA}📊 Usage Statistics:{Colors.NC}")
-                    print(f"   Prompt tokens: {usage.get('prompt_tokens', 'N/A')}")
-                    print(f"   Completion tokens: {usage.get('completion_tokens', 'N/A')}")
-                    print(f"   Total tokens: {usage.get('total_tokens', 'N/A')}")
-                
-                print(f"{Colors.MAGENTA}⏱️  Response Time: {duration:.2f}s{Colors.NC}")
-                log_success("Request completed successfully")
-                return content
-            else:
-                log_error("Invalid response format")
-                print(f"Raw response: {json.dumps(data, indent=2)}")
-                return None
-                
-    except requests.exceptions.RequestException as e:
-        log_error(f"Request failed: {e}")
-        return None
+            content = data['choices'][0]['message']['content']
+            tokens = data['usage']['total_tokens']
+
+            print(f"Response: {content}")
+            print(f"Tokens used: {tokens}")
+            print("✅ Test successful!")
+            return True
+        else:
+            print(f"❌ HTTP Error {response.status_code}: {response.text}")
+            return False
+
     except Exception as e:
-        log_error(f"Unexpected error: {e}")
-        return None
+        print(f"❌ Request failed: {e}")
+        return False
 
 def main():
-    print(f"{Colors.BOLD}{Colors.CYAN}🧪 K2Think API Proxy - Quick Python Test{Colors.NC}")
-    print("=" * 50)
-    print()
-    
-    # Test connectivity
-    if not test_connectivity():
-        log_error("Server is not running. Please start it first:")
-        print("   python3 k2think_proxy.py")
-        print("   Or use: bash manage-server.sh start")
+    print("Testing K2Think API connection...")
+
+    # Try OpenAI client first
+    if test_with_openai():
         return
-    
-    # Parse command line arguments
-    message = DEFAULT_MESSAGE
-    model = DEFAULT_MODEL
-    stream = False
-    interactive = True
-    
-    if len(sys.argv) > 1 and sys.argv[1] not in ['--help', '-h', '--interactive', '-i']:
-        message = " ".join(sys.argv[1:])
-        interactive = False
-    
-    # Interactive mode
-    if interactive:
-        print(f"{Colors.BLUE}🎯 Interactive Mode{Colors.NC}")
-        print()
-        
-        # Get message
-        user_input = input(f"{Colors.CYAN}💬 Enter your message{Colors.YELLOW} [{message}]{Colors.NC}: ")
-        if user_input.strip():
-            message = user_input.strip()
-        
-        # Get model
-        model_choice = input(f"{Colors.CYAN}🤖 Select model{Colors.YELLOW} [1]{Colors.NC}: ")
-        if model_choice.strip() == "2":
-            model = "MBZUAI-IFM/K2Think-nothink"
-        
-        # Get streaming preference
-        stream_choice = input(f"{Colors.CYAN}🌊 Use streaming?{Colors.YELLOW} [y/N]{Colors.NC}: ")
-        stream = stream_choice.strip().lower() in ['y', 'yes']
-        
-        print()
-        print(f"{Colors.MAGENTA}📋 Request Summary:{Colors.NC}")
-        print(f"   Message: {message}")
-        print(f"   Model: {model}")
-        print(f"   Streaming: {stream}")
-        print()
-        
-        # Confirm
-        confirm = input(f"{Colors.CYAN}❓ Send this request?{Colors.YELLOW} [Y/n]{Colors.NC}: ")
-        if confirm.strip().lower() in ['n', 'no']:
-            log_info("Request cancelled")
-            return
-        print()
-    
-    # Make the request
-    result = make_request(message, model, stream)
-    
-    if result:
-        print()
-        log_success("Test completed successfully!")
-    else
-        log_error("Test failed")
-        sys.exit(1)
+
+    # Fallback to direct requests
+    print("\n🔄 Falling back to direct HTTP request...")
+    if test_with_requests():
+        return
+
+    print("\n❌ All test methods failed")
+    print("Please ensure:")
+    print("1. Server is running: bash scripts/all.sh start")
+    print("2. Environment is activated: bash scripts/all.sh activate")
+    print("3. Check server logs: bash scripts/all.sh logs")
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()
