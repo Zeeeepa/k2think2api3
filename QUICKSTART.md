@@ -1,5 +1,9 @@
 # K2Think API - Quick Start Guide
 
+> **🚨 IMPORTANT:** Make sure you use the correct URL format!  
+> Use `raw.githubusercontent.com` (NOT `raw.github.com` or `github.com/blob/`)  
+> See [DEPLOYMENT_URL_GUIDE.md](./DEPLOYMENT_URL_GUIDE.md) for details.
+
 ## 🚀 One-Command Deployment
 
 Deploy the K2Think API proxy in seconds with **automatic credential handling** and **API key export**!
@@ -345,4 +349,3 @@ For issues or questions:
 ---
 
 **Happy coding! 🎉**
-
