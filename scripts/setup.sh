@@ -1,74 +1,119 @@
 #!/bin/bash
+# setup.sh - Complete environment setup for K2Think API
+# Sets up venv, installs dependencies, configures files
+# Does NOT start the server - use start.sh for that
+
 set -e
 
-echo "🚀 K2Think API Proxy - Setup Script"
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+log_success() { echo -e "${GREEN}✅ $1${NC}"; }
+log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+log_error() { echo -e "${RED}❌ $1${NC}"; }
+
+echo ""
+echo "🔧 K2Think API - Environment Setup"
 echo "===================================="
+echo ""
 
 # Check Python version
-echo "📋 Checking Python version..."
-python3 --version || { echo "❌ Python 3 not found!"; exit 1; }
+log_info "Checking Python version..."
+if ! command -v python3 &> /dev/null; then
+    log_error "Python 3 not found!"
+    exit 1
+fi
+python3 --version
+log_success "Python 3 is available"
+echo ""
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
-    echo "🔧 Creating virtual environment..."
+    log_info "Creating virtual environment..."
     python3 -m venv venv || {
-        echo "⚠️  Failed to create venv, trying with --system-site-packages"
+        log_warning "Failed to create venv, trying with --system-site-packages"
         python3 -m venv --system-site-packages venv
     }
+    log_success "Virtual environment created"
+else
+    log_success "Virtual environment already exists"
 fi
+echo ""
 
 # Activate virtual environment
-echo "✨ Activating virtual environment..."
+log_info "Activating virtual environment..."
 source venv/bin/activate
 
 # Install dependencies
-echo "📦 Installing Python dependencies..."
-pip install -r requirements.txt
+log_info "Installing Python dependencies..."
+pip install -q --upgrade pip
+pip install -q -r requirements.txt
+log_success "Dependencies installed"
+echo ""
 
 # Create data directory
-echo "📁 Creating data directory..."
+log_info "Setting up data directory..."
 mkdir -p data
+log_success "Data directory ready"
+echo ""
 
 # Create empty tokens.txt if it doesn't exist
 if [ ! -f "tokens.txt" ]; then
-    echo "🔑 Creating empty tokens.txt file..."
+    log_info "Creating tokens.txt file..."
     echo '[]' > tokens.txt
-    echo "✅ tokens.txt created (empty array - will be populated when tokens are available)"
+    log_success "tokens.txt created (will be populated when tokens are available)"
+else
+    log_success "tokens.txt already exists"
 fi
+echo ""
 
-# Setup accounts file if K2 credentials are available
+# Handle credentials for accounts.txt
 if [ ! -f "accounts.txt" ]; then
-    if [ ! -z "$K2_EMAIL" ] && [ ! -z "$K2_PASSWORD" ]; then
-        echo "🔑 Creating accounts.txt from environment variables..."
+    log_info "Setting up K2 credentials..."
+    
+    # Try environment variables first
+    if [ ! -z "${K2_EMAIL:-}" ] && [ ! -z "${K2_PASSWORD:-}" ]; then
+        log_success "Using credentials from environment variables"
         echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
-        echo "✅ accounts.txt created"
+        log_success "accounts.txt created with environment credentials"
     else
+        # Interactive prompt
         echo ""
-        echo "🔑 K2 Account Setup Required"
-        echo "================================"
-        echo "Please enter your K2 credentials (or press Ctrl+C to skip):"
+        echo "🔑 K2 Account Credentials Required"
+        echo "===================================="
+        echo "Enter your K2 credentials (or press Ctrl+C to skip):"
         echo ""
         
-        read -p "📧 Email login: " user_email
+        read -p "📧 Email: " user_email
         read -sp "🔒 Password: " user_password
+        echo ""
         echo ""
         
         if [ ! -z "$user_email" ] && [ ! -z "$user_password" ]; then
             echo "{\"email\": \"$user_email\", \"k2_password\": \"$user_password\"}" > accounts.txt
-            echo "✅ accounts.txt created with your credentials"
+            log_success "accounts.txt created with your credentials"
+            export K2_EMAIL="$user_email"
+            export K2_PASSWORD="$user_password"
         else
-            echo "⚠️  Skipped credential input"
-            echo "📝 Note: You can create accounts.txt manually later with format:"
-            echo '   {"email": "your@email.com", "k2_password": "yourpassword"}'
+            log_warning "Skipped credential input"
+            log_info "You can create accounts.txt manually later:"
+            echo '   Format: {"email": "your@email.com", "k2_password": "yourpassword"}'
         fi
     fi
 else
-    echo "✅ accounts.txt already exists"
+    log_success "accounts.txt already exists"
 fi
+echo ""
 
 # Create .env file
 if [ ! -f ".env" ]; then
-    echo "📝 Creating .env configuration file..."
+    log_info "Creating .env configuration file..."
     TIMESTAMP=$(date +%s)
     
     # Check if accounts.txt exists to determine auto-update setting
@@ -92,26 +137,39 @@ ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE
 # HTTP_PROXY=http://proxy:port
 # HTTPS_PROXY=https://proxy:port
 EOF
-    echo "✅ .env file created (ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE)"
+    log_success ".env file created (ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE)"
 else
-    echo "ℹ️  .env file already exists"
+    log_success ".env file already exists"
 fi
+echo ""
 
-# Check if OpenAI package is installed
-echo "🔍 Checking OpenAI package..."
+# Verify OpenAI package installation
+log_info "Verifying OpenAI package..."
 python3 -c "import openai" 2>/dev/null || {
-    echo "📦 Installing openai package for testing..."
-    pip install openai
+    log_info "Installing openai package..."
+    pip install -q openai
 }
+log_success "OpenAI package is installed"
+echo ""
 
+# Display summary
+echo "╔════════════════════════════════════════════════════════╗"
+echo "║           ✅ SETUP COMPLETE! ✅                        ║"
+echo "╚════════════════════════════════════════════════════════╝"
 echo ""
-echo "✅ Setup complete!"
+log_success "Environment is ready!"
 echo ""
-echo "📚 Next steps:"
-echo "   1. Run ./deploy.sh to start the server"
-echo "   2. Run ./send_request.sh to test the API"
+echo "📋 What was configured:"
+echo "   • Virtual environment (venv)"
+echo "   • Python dependencies"
+echo "   • Configuration files (.env)"
+if [ -f "accounts.txt" ]; then
+    echo "   • K2 credentials (accounts.txt)"
+fi
 echo ""
-echo "💡 Optional: Enable K2 credentials auto-update"
-echo "   1. Create accounts.txt with format: {\"email\": \"your@email.com\", \"k2_password\": \"yourpassword\"}"
-echo "   2. Edit .env and set ENABLE_TOKEN_AUTO_UPDATE=true"
-echo "   3. Restart the server with ./deploy.sh"
+echo "🚀 Next steps:"
+echo "   • Start server: bash scripts/start.sh"
+echo "   • Test API:     bash scripts/send_request.sh"
+echo "   • Do everything: bash scripts/all.sh"
+echo ""
+
