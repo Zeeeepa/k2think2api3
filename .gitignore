@@ -11,3 +11,7 @@ accounts.txt
 tokens.txt.backup
 *.pyc
 *.log
+# Auto-generated helper scripts
+python-k2
+activate-k2.sh
+.server.pid
