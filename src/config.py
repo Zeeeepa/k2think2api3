@@ -18,6 +18,7 @@ class Config:
     
     # API认证配置
     VALID_API_KEY: str = os.getenv("VALID_API_KEY", "")
+    ALLOW_ANY_API_KEY: bool = os.getenv("ALLOW_ANY_API_KEY", "true").lower() == "true"
     # 移除硬编码的K2THINK_TOKEN，使用token管理器
     K2THINK_API_URL: str = os.getenv("K2THINK_API_URL", "https://www.k2think.ai/api/chat/completions")
     
@@ -37,7 +38,7 @@ class Config:
     
     # 服务器配置
     HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8001"))
+    PORT: int = int(os.getenv("SERVER_PORT", os.getenv("PORT", "8001")))
     
     # 功能开关
     TOOL_SUPPORT: bool = os.getenv("TOOL_SUPPORT", "true").lower() == "true"
@@ -65,7 +66,7 @@ class Config:
     @classmethod
     def validate(cls) -> None:
         """验证必需的配置项"""
-        if not cls.VALID_API_KEY:
+        if not cls.ALLOW_ANY_API_KEY and not cls.VALID_API_KEY:
             raise ValueError("错误：VALID_API_KEY 环境变量未设置。请在 .env 文件中提供一个安全的API密钥。")
         
         # 验证token文件是否存在

@@ -37,7 +37,8 @@ if [ -f ".env" ]; then
     export $(cat .env | grep -v '^#' | xargs)
 fi
 
-PORT=${PORT:-7000}
+# Prefer SERVER_PORT over .env PORT
+PORT=${SERVER_PORT:-${PORT:-7000}}
 API_KEY=${VALID_API_KEY:-test-key-123}
 BASE_URL="http://localhost:$PORT"
 
@@ -56,6 +57,39 @@ echo ""
 
 # Create comprehensive test script
 log_info "Preparing API tests..."
+
+# Quick demonstration that any API key and any model name work
+echo ""
+echo "======================================================================"
+echo "🎯 QUICK DEMO: Permissive Mode (any key, any model)"
+echo "======================================================================"
+echo ""
+python3 << 'DEMO_EOF'
+from openai import OpenAI
+import os
+
+port = os.getenv("PORT", "7000")
+base_url = f"http://localhost:{port}/v1"
+
+client = OpenAI(
+    api_key="sk-any",  # ✅ Any key works!
+    base_url=base_url
+)
+
+try:
+    response = client.chat.completions.create(
+        model="gpt-5",  # ✅ Any model name works!
+        messages=[{"role": "user", "content": "Say hello in 5 words."}]
+    )
+    print(f"✅ Response: {response.choices[0].message.content}")
+    print(f"📍 Server PORT: {port}")
+except Exception as e:
+    print(f"❌ Error: {e}")
+DEMO_EOF
+echo ""
+echo "======================================================================"
+echo ""
+
 cat > /tmp/test_k2think.py << 'PYEOF'
 from openai import OpenAI
 import sys
