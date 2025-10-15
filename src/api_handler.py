@@ -37,21 +37,24 @@ class APIHandler:
         self.token_manager = config.get_token_manager()
     
     def validate_api_key(self, authorization: str) -> bool:
-        """验证API密钥"""
-        if not authorization or not authorization.startswith(APIConstants.BEARER_PREFIX):
-            return False
-        api_key = authorization[APIConstants.BEARER_PREFIX_LENGTH:]  # 移除 "Bearer " 前缀
-        return api_key == self.config.VALID_API_KEY
+        """验证API密钥 - 现在接受任何API密钥"""
+        # 记录请求已通过（用于调试）
+        if Config.DEBUG_LOGGING:
+            safe_log_info("API key validation bypassed - accepting any client key")
+        # 始终返回True，接受任何API密钥（包括空值）
+        return True
     
     def should_output_thinking(self, model_name: str) -> bool:
         """根据模型名判断是否应该输出思考内容"""
         return model_name != APIConstants.MODEL_ID_NOTHINK
     
     def get_actual_model_id(self, model_name: str) -> str:
-        """获取实际的模型ID（将nothink版本映射回原始模型）"""
-        if model_name == APIConstants.MODEL_ID_NOTHINK:
-            return APIConstants.MODEL_ID
-        return model_name
+        """获取实际的模型ID - 现在始终返回K2-Think模型"""
+        # 记录原始模型名（用于调试）
+        if Config.DEBUG_LOGGING and model_name != APIConstants.MODEL_ID:
+            safe_log_info(f"Model name '{model_name}' mapped to '{APIConstants.MODEL_ID}'")
+        # 始终返回K2-Think模型，忽略客户端请求的模型名
+        return APIConstants.MODEL_ID
     
     async def get_models(self) -> ModelsResponse:
         """获取模型列表"""

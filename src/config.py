@@ -65,8 +65,9 @@ class Config:
     @classmethod
     def validate(cls) -> None:
         """验证必需的配置项"""
-        if not cls.VALID_API_KEY:
-            raise ValueError("错误：VALID_API_KEY 环境变量未设置。请在 .env 文件中提供一个安全的API密钥。")
+        # VALID_API_KEY 现在是可选的，因为我们接受任何客户端API密钥
+        # if not cls.VALID_API_KEY:
+        #     raise ValueError("错误：VALID_API_KEY 环境变量未设置。请在 .env 文件中提供一个安全的API密钥。")
         
         # 验证token文件是否存在
         if not os.path.exists(cls.TOKENS_FILE):

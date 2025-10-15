@@ -1089,3 +1089,31 @@ This project is provided as-is for educational and development purposes.
 *Last updated: 2024-01-15*  
 *Version: 1.0.0*
 
+
+## 🔓 Open Proxy Mode
+
+The proxy now operates in **open mode** by default:
+
+- ✅ **Any API Key Accepted**: Clients can use any API key (e.g., `sk-any`, `sk-test`) or even empty strings
+- ✅ **Any Model Name Accepted**: All model names are automatically routed to `MBZUAI-IFM/K2-Think`
+- ✅ **Drop-in OpenAI Replacement**: Use this as a direct replacement for OpenAI API endpoints
+
+### Example Usage
+
+```python
+from openai import OpenAI
+
+# Works with ANY model name and ANY API key!
+client = OpenAI(
+    api_key="sk-any",  # Can be anything
+    base_url="http://localhost:7000/v1"
+)
+
+# These all work and route to K2-Think:
+response = client.chat.completions.create(
+    model="gpt-4",  # or "gpt-3.5-turbo", "claude-3", "MODEL", etc.
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+**Note**: The server uses its own stored tokens for upstream K2Think API authentication.
