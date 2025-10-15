@@ -111,7 +111,9 @@ echo ""
 # Load environment variables
 if [ -f ".env" ]; then
     API_KEY=$(grep VALID_API_KEY .env | cut -d'=' -f2 2>/dev/null || echo "")
-    PORT=$(grep PORT .env | cut -d'=' -f2 2>/dev/null || echo "7000")
+    # Load PORT from .env and evaluate it (handles ${SERVER_PORT:-7000} syntax)
+    source .env 2>/dev/null || true
+    PORT=${PORT:-7000}
 else
     PORT=7000
     API_KEY=""
@@ -240,6 +242,13 @@ fi
 echo ""
 echo ""
 
+# Add prominent venv warning
+echo ""
+echo -e "${RED}⚠️  IMPORTANT: PYTHON VIRTUAL ENVIRONMENT REQUIRED! ⚠️${NC}"
+echo -e "${YELLOW}   Always use ./python-k2 or activate the venv before running Python!${NC}"
+echo -e "${YELLOW}   Running 'python' directly will fail with externally-managed-environment${NC}"
+echo -e "${YELLOW}   See VENV_USAGE.md for detailed instructions.${NC}"
+echo ""
 # Environment setup options
 echo -e "${CYAN}🔧 Environment Setup Options:${NC}"
 echo ""
