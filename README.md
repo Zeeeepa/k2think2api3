@@ -87,6 +87,23 @@ export K2_PASSWORD="yourpassword"
 bash <(curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/install.sh)
 ```
 
+### With Custom Port Configuration
+
+```bash
+export K2_EMAIL="your@email.com"
+export K2_PASSWORD="yourpassword"
+export SERVER_PORT=7321  # Use any port you want!
+git clone https://github.com/Zeeeepa/k2think2api3
+cd k2think2api3
+bash scripts/all.sh
+```
+
+**What this does:**
+- ✅ Server starts on your custom port (7321 in this example)
+- ✅ All scripts automatically use the custom port
+- ✅ Test request shows your custom URL
+- ✅ Example code includes your port number
+
 ---
 
 ## Open Proxy Mode Details

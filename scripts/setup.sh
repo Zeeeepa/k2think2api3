@@ -122,12 +122,15 @@ if [ ! -f ".env" ]; then
         AUTO_UPDATE="true"
     fi
     
+    # Use SERVER_PORT environment variable if set, otherwise default to 7000
+    PORT_VALUE="${SERVER_PORT:-7000}"
+    
     cat > .env << EOF
 # API Authentication
 VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
 
 # Server Configuration  
-PORT=7000
+PORT=$PORT_VALUE
 
 # Token Management
 # Set to true if you have accounts.txt with K2 credentials
@@ -172,4 +175,3 @@ echo "   • Start server: bash scripts/start.sh"
 echo "   • Test API:     bash scripts/send_request.sh"
 echo "   • Do everything: bash scripts/all.sh"
 echo ""
-

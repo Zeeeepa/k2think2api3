@@ -230,5 +230,21 @@ else
 fi
 echo ""
 
-exit $TEST_RESULT
+# Print SERVER_PORT configuration
+echo "╔════════════════════════════════════════════════════════╗"
+echo "║                  📡 SERVER CONFIGURATION                ║"
+echo "╚════════════════════════════════════════════════════════╝"
+echo ""
+echo -e "${CYAN}🌐 Server running on port:${NC} ${GREEN}${PORT}${NC}"
+echo -e "${CYAN}🔗 Base URL:${NC} ${GREEN}${BASE_URL}/v1${NC}"
+echo ""
+echo "Example usage:"
+echo ""
+echo -e "${YELLOW}from openai import OpenAI${NC}"
+echo -e "${YELLOW}client = OpenAI(${NC}"
+echo -e "${YELLOW}    api_key=\"sk-any\",  # ✅ Any key works!${NC}"
+echo -e "${YELLOW}    base_url=\"http://localhost:${PORT}/v1\"${NC}"
+echo -e "${YELLOW})${NC}"
+echo ""
 
+exit $TEST_RESULT

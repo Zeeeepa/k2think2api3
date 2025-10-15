@@ -275,10 +275,12 @@ echo ""
 echo "╔════════════════════════════════════════════════════════╗"
 echo "║  🌟 Server is RUNNING and ready for requests! 🌟      ║"
 echo "║                                                        ║"
+echo "║  📡 Server Port: ${PORT}                               ║"
+echo "║  🔗 Base URL: ${BASE_URL}/v1                           ║"
+echo "║                                                        ║"
 echo "║  Quick start: ${PROJECT_DIR}/python-k2 script.py      ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo ""
 
 log_success "All systems operational!"
 echo ""
-
