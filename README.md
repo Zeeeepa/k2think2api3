@@ -4,20 +4,60 @@
 
 ---
 
+## 🔓 Open Proxy Mode (NEW!)
+
+The proxy now operates in **open mode** by default - the most flexible way to use K2-Think!
+
+### What This Means
+
+- ✅ **Any API Key Accepted**: Use `sk-any`, `test`, `random-key`, or even empty strings
+- ✅ **Any Model Name Accepted**: `gpt-4`, `gpt-5`, `claude-3`, `my-model` - all route to K2-Think
+- ✅ **Drop-in OpenAI Replacement**: Perfect replacement for OpenAI API endpoints
+- ✅ **Zero Configuration**: No need to manage API keys or model names
+- ✅ **Centralized Auth**: Server handles all K2Think authentication
+
+### Quick Example
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-any",  # ✅ Any key works!
+    base_url="http://localhost:7000/v1"
+)
+
+result = client.chat.completions.create(
+    model="gpt-5",  # ✅ Any model works!
+    messages=[{"role": "user", "content": "Write a haiku about code."}]
+)
+
+print(result.choices[0].message.content)
+```
+
+**Output:**
+```
+Code lines softly hum,  
+Syntax weaves logic's soft song—  
+Machines come alive.
+```
+
+---
+
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Installation Methods](#installation-methods)
-3. [Core Features](#core-features)
-4. [Project Structure](#project-structure)
-5. [Deployment Scripts Guide](#deployment-scripts-guide)
+2. [Open Proxy Mode Details](#open-proxy-mode-details)
+3. [Installation Methods](#installation-methods)
+4. [Core Features](#core-features)
+5. [Project Structure](#project-structure)
 6. [Configuration](#configuration)
 7. [Using the API](#using-the-api)
 8. [Server Management](#server-management)
 9. [API Reference](#api-reference)
 10. [Troubleshooting](#troubleshooting)
 11. [Advanced Features](#advanced-features)
-12. [中文文档](#中文文档)
+12. [Changelog](#changelog)
+13. [中文文档](#中文文档)
 
 ---
 
@@ -37,7 +77,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/in
 3. ✅ Installs dependencies
 4. ✅ Starts the server on port 7000
 5. ✅ Runs a test request
-6. ✅ Displays your API key and usage instructions
+6. ✅ Displays usage instructions
 
 ### With Pre-Set Credentials (No Prompts)
 
@@ -47,21 +87,90 @@ export K2_PASSWORD="yourpassword"
 bash <(curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/install.sh)
 ```
 
-### Alternative: All-in-One Smart Script
+### With Custom Port Configuration
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
+export K2_EMAIL="your@email.com"
+export K2_PASSWORD="yourpassword"
+export SERVER_PORT=7321  # Use any port you want!
+git clone https://github.com/Zeeeepa/k2think2api3
+cd k2think2api3
+bash scripts/all.sh
 ```
 
-**Smart features:**
-- ✅ Auto-detects if you're in the project directory
-- ✅ Searches common locations for existing installation
-- ✅ Clones repository if not found
-- ✅ Prompts for credentials if needed
-- ✅ Installs all dependencies
-- ✅ Starts the server
-- ✅ Shows live API response
-- ✅ Prints working examples with your localhost URL
+**What this does:**
+- ✅ Server starts on your custom port (7321 in this example)
+- ✅ All scripts automatically use the custom port
+- ✅ Test request shows your custom URL
+- ✅ Example code includes your port number
+
+---
+
+## Open Proxy Mode Details
+
+### How It Works
+
+1. **Client Request**: Client sends request with any API key + any model name
+2. **Key Bypass**: Server accepts the key without validation
+3. **Model Mapping**: Server maps client's model name → `MBZUAI-IFM/K2-Think`
+4. **Token Injection**: Server uses its own K2Think JWT token
+5. **Upstream Request**: Server forwards to K2Think backend
+6. **Response**: Server returns K2Think response to client
+
+### Token Management
+
+The server automatically manages K2Think JWT tokens:
+
+- **Stored in**: `data/tokens.txt`
+- **Credentials from**: `data/accounts.txt`
+- **Auto-refresh**: When tokens expire (401 errors)
+- **Zero-downtime**: Token rotation without service interruption
+
+### Testing Different Configurations
+
+```python
+# Test 1: Different API keys
+for api_key in ["sk-test-1", "random-key", "any-string", ""]:
+    client = OpenAI(api_key=api_key or "empty", base_url="http://localhost:7000/v1")
+    result = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Hi"}]
+    )
+    print(f"✅ API key '{api_key or '(empty)'}' accepted")
+
+# Test 2: Different model names
+for model in ["gpt-4", "gpt-5", "claude-3", "my-model"]:
+    client = OpenAI(api_key="test", base_url="http://localhost:7000/v1")
+    result = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "Hi"}]
+    )
+    print(f"✅ Model '{model}' accepted → routed to K2-Think")
+```
+
+### Benefits
+
+**For Users:**
+- 🎉 **Zero Configuration** - No need to manage API keys
+- 🔄 **Model Flexibility** - Use any model name they prefer
+- 🚀 **Instant Setup** - One command to get started
+- 🔒 **Security** - Server handles all authentication
+
+**For Developers:**
+- 📦 **Easy Integration** - Works with existing OpenAI clients
+- 🔧 **No Code Changes** - Drop-in replacement for OpenAI API
+- 🧪 **Testing Friendly** - Use any mock keys for testing
+- 📊 **Centralized Auth** - All tokens managed server-side
+
+### Security Considerations
+
+⚠️ **Important**: Since API key validation is bypassed:
+
+- ✅ Deploy in trusted network environment
+- ✅ Configure network-level security (firewall, VPN)
+- ✅ Restrict access to authorized users/networks
+- ✅ Secure the server's `data/tokens.txt` and `data/accounts.txt`
+- ✅ Use environment variables for sensitive data
 
 ---
 
@@ -105,27 +214,18 @@ For those who prefer manual control:
 git clone https://github.com/Zeeeepa/k2think2api3.git
 cd k2think2api3
 
-# 2. Setup environment
+# 2. Set credentials
+export K2_EMAIL="your@email.com"
+export K2_PASSWORD="yourpassword"
+
+# 3. Setup environment
 bash scripts/setup.sh
 
-# 3. Start server
-bash scripts/deploy.sh
+# 4. Start server
+bash scripts/start.sh
 
-# 4. Test API
+# 5. Test API
 bash scripts/send_request.sh
-```
-
-### Method 4: With Specific Branch
-
-```bash
-# Download deployment script
-curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/csds.sh -o csds.sh
-
-# Deploy with main branch (default)
-bash csds.sh
-
-# Or deploy with specific branch
-bash csds.sh your-branch-name
 ```
 
 ---
@@ -166,467 +266,274 @@ bash csds.sh your-branch-name
 - Zero-downtime token updates
 - Continuous health monitoring
 
-### 🛡️ Self-Healing System
-- Automatic token validation
-- Intelligent retry mechanisms
-- Robust error handling
-- High availability
-
-### 🚀 Performance
-- Async/await architecture
-- High concurrency support
-- Efficient connection pooling
-- Optimized for scale
-
 ---
 
 ## Project Structure
 
 ```
 k2think2api3/
-├── 📂 scripts/              # All deployment scripts
-│   ├── all.sh              # 🎯 Smart all-in-one deployment
-│   ├── setup.sh            # 🔧 Environment setup
-│   ├── deploy.sh           # 🚀 Server deployment
-│   ├── install.sh          # 📦 Interactive installer
-│   ├── send_request.sh     # 🧪 API testing
-│   └── export_env.sh       # 🔐 Environment variables
-├── k2think_proxy.py        # Main proxy server
-├── get_tokens.py           # Token management
-├── requirements.txt        # Python dependencies
-├── Dockerfile              # Docker support
-├── README.md               # Main documentation
-├── INSTALL.md              # Installation guide
-├── QUICKSTART.md           # Quick start guide
-├── README_NEW_SECTION.md   # Additional features
-└── DOCUMENTATION.md        # This file
+├── 📂 src/                  # Source code
+│   ├── api_handler.py       # API request handling (Open Proxy Mode!)
+│   ├── config.py            # Configuration management
+│   ├── token_manager.py     # Token rotation and management
+│   └── token_updater.py     # Automatic token refresh
+├── 📂 data/                 # Runtime data
+│   ├── accounts.txt         # K2 credentials (JSON format)
+│   └── tokens.txt           # Auto-refreshing K2Think JWT tokens
+├── 📂 scripts/              # Deployment scripts
+│   ├── all.sh               # 🎯 Complete one-command setup
+│   ├── setup.sh             # Environment setup
+│   ├── start.sh             # Server startup
+│   └── send_request.sh      # API testing
+├── k2think_proxy.py         # Main server entry point
+├── get_tokens.py            # Token acquisition utility
+├── requirements.txt         # Python dependencies
+├── .env                     # Configuration (auto-generated)
+├── server.log               # Server logs
+└── README.md                # This file
 ```
-
-### Generated Files After Installation
-
-```
-k2think2api3/
-├── .env                    # API key and configuration
-├── accounts.txt            # Your K2 credentials (JSON format)
-├── tokens.txt              # Auto-refreshing tokens
-├── server.log              # Server logs
-├── .server.pid             # Process ID for server management
-└── venv/                   # Python virtual environment
-    └── lib/                # Includes OpenAI SDK
-```
-
----
-
-## Deployment Scripts Guide
-
-### 📋 scripts/all.sh - Complete One-Command Deployment
-
-**The master script that handles everything:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
-```
-
-**Complete workflow:**
-1. ✅ Auto-detects if you're in project directory
-2. ✅ Searches common locations (~/k2think2api3, ~/projects/k2think2api3)
-3. ✅ Clones repository if not found
-4. ✅ Prompts for K2 credentials (if needed)
-5. ✅ Runs setup (venv, dependencies, .env)
-6. ✅ Starts server on port 7000
-7. ✅ Tests with Python SDK
-8. ✅ Shows live API response
-9. ✅ Prints working examples with actual URLs
-10. ✅ Exports environment variables
-
-**With pre-set credentials:**
-```bash
-export K2_EMAIL="your@email.com"
-export K2_PASSWORD="yourpassword"
-curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
-```
-
----
-
-### 🔧 scripts/setup.sh - Environment Setup
-
-**For initial environment configuration:**
-
-```bash
-git clone https://github.com/Zeeeepa/k2think2api3
-cd k2think2api3
-bash scripts/setup.sh
-```
-
-**What it does:**
-- Creates Python virtual environment (venv/)
-- Installs all dependencies from requirements.txt
-- Creates accounts.txt from credentials
-- Generates .env configuration file
-- Installs OpenAI Python package for testing
-- Sets up token management system
-
-**Required environment variables:**
-- `K2_EMAIL` - Your K2Think account email
-- `K2_PASSWORD` - Your K2Think password
-
-**Features:**
-- ✅ Handles externally-managed Python environments
-- ✅ No root privileges required
-- ✅ No system package modifications
-- ✅ Isolated dependency management
-
----
-
-### 🚀 scripts/deploy.sh - Server Deployment
-
-**For starting or restarting the server:**
-
-```bash
-cd k2think2api3
-bash scripts/deploy.sh
-```
-
-**What it does:**
-- Activates virtual environment
-- Starts server in background on port 7000
-- Creates PID file (.server.pid) for management
-- Waits for server initialization
-- Shows server status and information
-- Displays management commands
-
-**Server features:**
-- Detects if server is already running
-- Provides kill command if needed
-- Shows health check endpoint
-- Logs all activity to server.log
-- Graceful shutdown support
-
----
-
-### 🧪 scripts/send_request.sh - API Testing
-
-**For testing the deployed API:**
-
-```bash
-cd k2think2api3
-bash scripts/send_request.sh
-```
-
-**What it does:**
-- Checks if server is running
-- Activates virtual environment
-- Uses OpenAI Python SDK
-- Sends test request to the API
-- Shows formatted response
-- Displays token usage statistics
-
-**Example output:**
-```
-======================================================================
-📥 RESPONSE RECEIVED
-======================================================================
-Model: MBZUAI-IFM/K2-Think
-ID: chatcmpl-1760096305
-
-Content:
-----------------------------------------------------------------------
-Hello! I'm K2-Think, an AI assistant.
-----------------------------------------------------------------------
-
-Token Usage:
-  • Prompt tokens: 438
-  • Completion tokens: 132
-  • Total tokens: 570
-======================================================================
-```
-
----
-
-### 🔐 scripts/export_env.sh - Environment Variables
-
-**For exporting environment variables to your shell:**
-
-```bash
-source <(curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/export_env.sh)
-```
-
-**What it does:**
-- Reads API key from .env file
-- Exports OPENAI_API_KEY variable
-- Exports OPENAI_BASE_URL variable
-- Shows usage example
-
-**After sourcing:**
-```python
-from openai import OpenAI
-client = OpenAI()  # Automatically uses environment variables
-```
-
----
-
-### 📦 scripts/install.sh - Interactive Installer
-
-**For guided installation with prompts:**
-
-```bash
-cd k2think2api3
-bash scripts/install.sh
-```
-
-**Features:**
-- Interactive prompts for all configuration
-- System requirements validation
-- Dependency installation
-- Account setup
-- Environment configuration
-- Installation testing
-- User-friendly error messages
 
 ---
 
 ## Configuration
 
-### Environment Variables
+### Environment Variables (.env)
 
-The `.env` file contains all configuration:
+The `.env` file is auto-generated during setup. Key settings:
 
 ```bash
-# API Configuration
+# Server Configuration
 PORT=7000
-VALID_API_KEY=sk-k2think-proxy-xxxxxxxxxx
+HOST=0.0.0.0
 
-# Token Management
+# Token Auto-Update (requires accounts.txt)
 ENABLE_TOKEN_AUTO_UPDATE=true
-TOKEN_UPDATE_INTERVAL=3600
-MAX_CONSECUTIVE_FAILURES=3
+TOKEN_UPDATE_INTERVAL=3600  # 1 hour in seconds
 
-# Logging
-LOG_LEVEL=INFO
+# Debug Mode
+DEBUG_LOGGING=false
 ```
 
-### Accounts Configuration
+### Accounts Configuration (data/accounts.txt)
 
-The `accounts.txt` file stores K2 credentials in JSON format:
+JSON format for K2 credentials:
 
 ```json
 {"email": "your@email.com", "k2_password": "yourpassword"}
 ```
 
-**Security notes:**
-- Never commit accounts.txt to version control
-- Keep credentials secure
-- Use environment variables for sensitive data
-
-### Token Management
-
-The `tokens.txt` file stores active tokens (managed automatically):
-
-```
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**Auto-update features:**
-- Automatic token refresh
-- Multi-token rotation
-- Failure detection
-- Health monitoring
-- Zero-downtime updates
+**Security Notes:**
+- Never commit this file to version control
+- Keep file permissions restrictive (chmod 600)
+- Use environment variables when possible
 
 ---
 
 ## Using the API
 
-### Quick Test with curl
-
-```bash
-curl http://localhost:7000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-k2think-proxy-xxxxxxxxxx" \
-  -d '{
-    "model": "MBZUAI-IFM/K2-Think",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-### Python Examples
-
-#### 1. Simple Example (Using Environment Variables)
+### Python (OpenAI SDK)
 
 ```python
 from openai import OpenAI
 
-# Uses OPENAI_API_KEY and OPENAI_BASE_URL from environment
-client = OpenAI()
-
-response = client.chat.completions.create(
-    model="MBZUAI-IFM/K2-Think",
-    messages=[{"role": "user", "content": "What is your model name?"}]
-)
-
-print(response.choices[0].message.content)
-```
-
-#### 2. Explicit Configuration
-
-```python
-from openai import OpenAI
-
+# Initialize client - any API key works!
 client = OpenAI(
-    base_url="http://localhost:7000/v1",
-    api_key="sk-k2think-proxy-xxxxxxxxxx"  # Get from .env file
+    api_key="sk-any",  # Can be anything
+    base_url="http://localhost:7000/v1"
 )
 
+# Simple request - any model name works!
 response = client.chat.completions.create(
-    model="MBZUAI-IFM/K2-Think",
+    model="gpt-4",  # Will route to K2-Think
     messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Explain quantum computing in simple terms."}
-    ],
-    temperature=0.7,
-    max_tokens=500
+        {"role": "user", "content": "Explain quantum computing"}
+    ]
 )
 
 print(response.choices[0].message.content)
-```
 
-#### 3. Streaming Response
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:7000/v1",
-    api_key="sk-k2think-proxy-xxxxxxxxxx"
-)
-
+# Streaming request
 stream = client.chat.completions.create(
-    model="MBZUAI-IFM/K2-Think",
-    messages=[{"role": "user", "content": "Write a short poem about AI"}],
+    model="gpt-5",  # Will route to K2-Think
+    messages=[
+        {"role": "user", "content": "Write a story"}
+    ],
     stream=True
 )
 
 for chunk in stream:
     if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end='', flush=True)
-print()
+        print(chunk.choices[0].delta.content, end="", flush=True)
+
+# Function calling
+response = client.chat.completions.create(
+    model="claude-3",  # Will route to K2-Think
+    messages=[{"role": "user", "content": "What's the weather?"}],
+    tools=[{
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get weather information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string"}
+                }
+            }
+        }
+    }]
+)
 ```
 
-#### 4. Using Virtual Environment
+### cURL
 
 ```bash
-# Activate the venv
-source ~/k2think2api3/venv/bin/activate
+# Simple request
+curl http://localhost:7000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-any" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
 
-# Run your script
-python your_script.py
-
-# Deactivate when done
-deactivate
+# Streaming request
+curl http://localhost:7000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer test-key" \
+  -d '{
+    "model": "gpt-5",
+    "messages": [{"role": "user", "content": "Tell me a joke"}],
+    "stream": true
+  }'
 ```
 
-#### 5. Direct Execution with venv Python
+### JavaScript/TypeScript
 
-```bash
-~/k2think2api3/venv/bin/python your_script.py
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  apiKey: 'sk-any',  // Any key works
+  baseURL: 'http://localhost:7000/v1'
+});
+
+async function main() {
+  const response = await client.chat.completions.create({
+    model: 'gpt-4',  // Will route to K2-Think
+    messages: [{ role: 'user', content: 'Hello!' }]
+  });
+  
+  console.log(response.choices[0].message.content);
+}
+
+main();
 ```
 
 ---
 
 ## Server Management
 
-### View Server Logs
+### Start Server
 
 ```bash
-tail -f ~/k2think2api3/server.log
+cd k2think2api3
+bash scripts/start.sh
 ```
 
-### Stop the Server
+### Stop Server
 
 ```bash
-kill $(cat ~/k2think2api3/.server.pid)
+# Using PID file
+kill $(cat .server.pid)
+
+# Or find and kill
+pkill -f k2think_proxy
 ```
 
-### Restart the Server
+### Restart Server
 
 ```bash
-cd ~/k2think2api3
-bash scripts/deploy.sh
+cd k2think2api3
+kill $(cat .server.pid)
+bash scripts/start.sh
+```
+
+### View Logs
+
+```bash
+# Real-time logs
+tail -f server.log
+
+# Recent logs
+tail -n 100 server.log
+
+# Search logs
+grep "error" server.log
 ```
 
 ### Check Server Status
 
 ```bash
+# Health check
 curl http://localhost:7000/health
-```
 
-### Get Your API Key
+# Token statistics
+curl http://localhost:7000/admin/tokens/stats
 
-```bash
-grep VALID_API_KEY ~/k2think2api3/.env
-```
-
-### Export Environment Variables
-
-```bash
-cd ~/k2think2api3
-export OPENAI_API_KEY=$(grep VALID_API_KEY .env | cut -d'=' -f2)
-export OPENAI_BASE_URL="http://localhost:7000/v1"
+# Server process
+ps aux | grep k2think_proxy
 ```
 
 ---
 
 ## API Reference
 
-### Chat Completions Endpoint
+### Endpoints
 
-**Endpoint:** `/v1/chat/completions`  
-**Method:** POST  
-**Compatible with:** OpenAI Chat Completions API
+#### POST /v1/chat/completions
 
-**Request body:**
+Create a chat completion (OpenAI compatible).
+
+**Request:**
 ```json
 {
-  "model": "MBZUAI-IFM/K2-Think",
+  "model": "gpt-4",  // Any model name
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
   ],
+  "stream": false,
   "temperature": 0.7,
-  "max_tokens": 500,
-  "stream": false
+  "max_tokens": null
 }
 ```
 
 **Response:**
 ```json
 {
-  "id": "chatcmpl-xxxxx",
+  "id": "chatcmpl-123",
   "object": "chat.completion",
-  "created": 1234567890,
+  "created": 1677652288,
   "model": "MBZUAI-IFM/K2-Think",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "Hello! How can I help you today?"
-      },
-      "finish_reason": "stop"
-    }
-  ],
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "Hello! How can I help you?"
+    },
+    "finish_reason": "stop"
+  }],
   "usage": {
-    "prompt_tokens": 20,
-    "completion_tokens": 10,
-    "total_tokens": 30
+    "prompt_tokens": 9,
+    "completion_tokens": 12,
+    "total_tokens": 21
   }
 }
 ```
 
-### Models List Endpoint
+#### GET /v1/models
 
-**Endpoint:** `/v1/models`  
-**Method:** GET
+List available models.
 
 **Response:**
 ```json
@@ -636,81 +543,38 @@ export OPENAI_BASE_URL="http://localhost:7000/v1"
     {
       "id": "MBZUAI-IFM/K2-Think",
       "object": "model",
-      "created": 1234567890,
-      "owned_by": "k2think-proxy"
+      "created": 1686935002,
+      "owned_by": "MBZUAI"
     }
   ]
 }
 ```
 
-### Health Check Endpoint
+#### GET /health
 
-**Endpoint:** `/health`  
-**Method:** GET
+Server health check.
 
 **Response:**
 ```json
 {
   "status": "healthy",
-  "version": "1.0.0",
-  "uptime": "2h 15m 30s"
+  "timestamp": "2024-01-15T10:00:00Z"
 }
 ```
 
-### Admin Endpoints
+#### GET /admin/tokens/stats
 
-All admin endpoints require authentication via the API key.
-
-#### Token Statistics
-
-**Endpoint:** `/admin/tokens/stats`  
-**Method:** GET
+Token pool statistics.
 
 **Response:**
 ```json
 {
   "total_tokens": 5,
-  "active_tokens": 4,
+  "available_tokens": 4,
   "failed_tokens": 1,
-  "last_update": "2024-01-15T10:30:00Z"
+  "token_details": [...]
 }
 ```
-
-#### Reload Tokens
-
-**Endpoint:** `/admin/tokens/reload`  
-**Method:** POST
-
-Reloads tokens from the tokens.txt file.
-
-#### Reset All Tokens
-
-**Endpoint:** `/admin/tokens/reset-all`  
-**Method:** POST
-
-Resets the failure state of all tokens.
-
-#### Auto-Updater Status
-
-**Endpoint:** `/admin/tokens/updater/status`  
-**Method:** GET
-
-**Response:**
-```json
-{
-  "enabled": true,
-  "last_update": "2024-01-15T10:00:00Z",
-  "next_update": "2024-01-15T11:00:00Z",
-  "interval_seconds": 3600
-}
-```
-
-#### Force Token Update
-
-**Endpoint:** `/admin/tokens/updater/force-update`  
-**Method:** POST
-
-Triggers an immediate token refresh.
 
 ---
 
@@ -718,87 +582,56 @@ Triggers an immediate token refresh.
 
 ### Server Won't Start
 
-**Check if port 7000 is already in use:**
+**Check if port 7000 is in use:**
 ```bash
 lsof -i :7000
 ```
 
 **View server logs:**
 ```bash
-cat ~/k2think2api3/server.log
+cat server.log
 ```
 
-**Ensure Python 3.8+ is installed:**
+**Verify Python version:**
 ```bash
-python3 --version
-```
-
-### "Command not found: bash"
-
-**Problem:** You're probably on Windows.  
-**Solution:** Use WSL or Git Bash.
-
-### "Permission denied"
-
-**Problem:** Script permissions or sudo requirement.  
-**Solution:** The script doesn't need sudo. Run as your normal user.
-
-### "curl: command not found"
-
-**Solution:** Install curl first:
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install curl
-
-# macOS
-brew install curl
-
-# CentOS/RHEL
-sudo yum install curl
+python3 --version  # Should be 3.8+
 ```
 
 ### "Module not found: openai"
 
-**Solution:** Use the virtual environment:
-
+**Use virtual environment:**
 ```bash
-source ~/k2think2api3/venv/bin/activate
+source venv/bin/activate
 python your_script.py
 ```
 
-Or use venv Python directly:
+**Or use venv Python directly:**
 ```bash
-~/k2think2api3/venv/bin/python your_script.py
+./venv/bin/python your_script.py
 ```
 
 ### Token Auto-Update Not Working
 
-1. **Verify accounts.txt exists and has correct format:**
+1. **Verify accounts.txt exists:**
    ```bash
-   cat ~/k2think2api3/accounts.txt
+   cat data/accounts.txt
    ```
 
 2. **Check .env configuration:**
    ```bash
-   grep ENABLE_TOKEN_AUTO_UPDATE ~/k2think2api3/.env
+   grep ENABLE_TOKEN_AUTO_UPDATE .env
    ```
 
 3. **View updater logs:**
    ```bash
-   grep "token" ~/k2think2api3/server.log
+   grep "token" server.log
    ```
 
-### Server Not Responding
+### Connection Refused
 
-**Check if server is running:**
+**Ensure server is running:**
 ```bash
 ps aux | grep k2think_proxy
-```
-
-**Check PID file:**
-```bash
-cat ~/k2think2api3/.server.pid
 ```
 
 **Test health endpoint:**
@@ -812,49 +645,26 @@ curl http://localhost:7000/health
 
 ### Custom Port Configuration
 
-Edit `.env` file:
+Edit `.env`:
 ```bash
 PORT=8000  # Change from default 7000
 ```
 
-Then restart the server:
+Restart server:
 ```bash
-cd ~/k2think2api3
 kill $(cat .server.pid)
-bash scripts/deploy.sh
+bash scripts/start.sh
 ```
 
-### Enable/Disable Token Auto-Update
+### Production Deployment
 
-Edit `.env` file:
-```bash
-# Enable auto-update (requires accounts.txt)
-ENABLE_TOKEN_AUTO_UPDATE=true
-
-# Disable auto-update
-ENABLE_TOKEN_AUTO_UPDATE=false
-```
-
-### Configure Update Interval
-
-Edit `.env` file:
-```bash
-# Update tokens every hour (3600 seconds)
-TOKEN_UPDATE_INTERVAL=3600
-
-# Update every 30 minutes
-TOKEN_UPDATE_INTERVAL=1800
-```
-
-### Production Deployment Recommendations
-
-1. **Use a reverse proxy** (nginx, Apache)
+1. **Use reverse proxy** (nginx, Apache)
 2. **Set up SSL/TLS** for secure connections
 3. **Configure rate limiting**
 4. **Set up monitoring** and alerts
-5. **Use a process manager** (systemd, PM2)
+5. **Use process manager** (systemd, PM2)
 6. **Implement log rotation**
-7. **Set up automated backups** for configuration
+7. **Set up automated backups**
 
 ### Docker Deployment
 
@@ -873,35 +683,41 @@ docker run -d \
 
 ---
 
-## Common Workflows
+## Changelog
 
-### First Time Setup
-```bash
-# One command does everything
-curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
-```
+### Version 2.1.0 - Open Proxy Mode (2025-01-15)
 
-### Daily Usage
+**Major Changes:**
 
-```bash
-# Check server status
-curl http://localhost:7000/health
+1. **Open Proxy Mode Enabled**
+   - ✅ Accept any API key from clients
+   - ✅ Accept any model name (auto-route to K2-Think)
+   - ✅ Bypass client key validation
+   - ✅ Use server-managed K2Think tokens
 
-# View recent logs
-tail -n 50 ~/k2think2api3/server.log
+2. **Code Changes**
+   - Modified `src/api_handler.py`:
+     - `validate_api_key()` now always returns `True`
+     - `get_actual_model_id()` always returns K2-Think model
+   - Modified `src/config.py`:
+     - Made `VALID_API_KEY` optional
+   - Enhanced token management and auto-refresh
 
-# Test API
-cd ~/k2think2api3 && bash scripts/send_request.sh
-```
+3. **Documentation**
+   - Added Open Proxy Mode section
+   - Updated all examples to show flexibility
+   - Added security considerations
+   - Consolidated documentation
 
-### Updating the Server
+**Migration Guide:**
 
-```bash
-cd ~/k2think2api3
-git pull origin main
-kill $(cat .server.pid)
-bash scripts/deploy.sh
-```
+No changes needed for existing users! The system is fully backward compatible.
+
+**Benefits:**
+- Drop-in replacement for OpenAI API
+- Simplified client configuration
+- Zero-configuration testing
+- Centralized authentication
 
 ---
 
@@ -914,142 +730,53 @@ bash scripts/deploy.sh
 
 提供 OpenAI 兼容的 API 接口，支持本地和 Docker 部署。
 
-### 核心功能特性
+### 🔓 开放代理模式（新功能！）
 
-- 🧠 **MBZUAI K2-Think 模型**: 支持 MBZUAI 开发的 K2-Think 推理模型
-- 🔄 **OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝对接现有应用
-- ⚡ **流式响应**: 支持实时流式聊天响应
-- 🛠️ **工具调用**: 支持 OpenAI Function Calling
-- 📊 **文件上传**: 支持文件、图像上传
-- 🔐 **令牌管理**: 自动令牌轮换和验证
-- 🎯 **智能脚本**: 自动检测、自动配置、自动部署
+代理服务器现在默认以**开放模式**运行：
 
-### 🚀 一键部署
+- ✅ **接受任何 API 密钥**：可以使用任何密钥（如 `sk-any`、`test` 等）
+- ✅ **接受任何模型名称**：所有模型名称都会路由到 K2-Think
+- ✅ **OpenAI 完美替代**：可作为 OpenAI API 的直接替代品
+- ✅ **零配置**：无需管理 API 密钥或模型名称
 
-最简单的方式！使用自动化脚本：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
-```
-
-### 特性说明
-
-#### 自动创建虚拟环境
-
-✅ 自动创建 Python 虚拟环境（解决系统管理的 Python 环境问题）  
-✅ 自动安装所有依赖  
-✅ 自动配置服务器  
-✅ 自动启动并测试 API  
-✅ 支持指定分支部署
-
-#### 使用虚拟环境
-
-脚本会自动处理 `externally-managed-environment` 错误：
-
-- 所有依赖都安装在独立的虚拟环境中 (venv/)
-- 不需要 root 权限
-- 不需要 `--break-system-packages` 选项
-- 完全隔离的依赖管理
-
-### 快速命令
-
-```bash
-# 查看日志
-tail -f ~/k2think2api3/server.log
-
-# 停止服务器
-kill $(cat ~/k2think2api3/.server.pid)
-
-# 重启服务器
-cd ~/k2think2api3 && bash scripts/deploy.sh
-
-# 获取 API 密钥
-grep VALID_API_KEY ~/k2think2api3/.env
-
-# 测试 API
-cd ~/k2think2api3 && bash scripts/send_request.sh
-```
-
-### Python 使用示例
+### 快速示例
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:7000/v1",
-    api_key="<your-api-key>"  # 从 .env 文件获取
+    api_key="sk-any",  # 任何密钥都可以！
+    base_url="http://localhost:7000/v1"
 )
 
-response = client.chat.completions.create(
-    model="MBZUAI-IFM/K2-Think",
+result = client.chat.completions.create(
+    model="gpt-5",  # 任何模型名都可以！
     messages=[{"role": "user", "content": "你好！"}]
 )
 
-print(response.choices[0].message.content)
+print(result.choices[0].message.content)
 ```
 
-### 高级配置
-
-#### 启用/禁用令牌自动更新
-
-编辑 `.env` 文件：
+### 🚀 一键部署
 
 ```bash
-# 启用自动更新（需要 accounts.txt 文件）
-ENABLE_TOKEN_AUTO_UPDATE=true
-
-# 禁用自动更新
-ENABLE_TOKEN_AUTO_UPDATE=false
+curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
 ```
 
-#### 配置 K2 凭据
-
-编辑 `accounts.txt` 文件：
-
-```json
-{"email": "your@email.com", "k2_password": "yourpassword"}
-```
-
-#### 更改服务器端口
-
-编辑 `.env` 文件：
+### 快速命令
 
 ```bash
-PORT=8000  # 默认是 7000
-```
+# 查看日志
+tail -f server.log
 
-然后重启服务器。
+# 停止服务器
+kill $(cat .server.pid)
 
-### 故障排除
+# 重启服务器
+bash scripts/start.sh
 
-#### 服务器无法启动
-
-1. 检查端口 7000 是否被占用：
-   ```bash
-   lsof -i :7000
-   ```
-
-2. 查看服务器日志：
-   ```bash
-   cat ~/k2think2api3/server.log
-   ```
-
-3. 确保安装了 Python 3.8+：
-   ```bash
-   python3 --version
-   ```
-
-#### "找不到模块: openai"
-
-使用虚拟环境：
-```bash
-source ~/k2think2api3/venv/bin/activate
-python your_script.py
-```
-
-或直接使用 venv Python：
-```bash
-~/k2think2api3/venv/bin/python your_script.py
+# 测试 API
+bash scripts/send_request.sh
 ```
 
 </details>
@@ -1062,17 +789,17 @@ python your_script.py
 
 - 📖 [GitHub Repository](https://github.com/Zeeeepa/k2think2api3)
 - 🐛 [Report Issues](https://github.com/Zeeeepa/k2think2api3/issues)
-- 💬 Check server logs: `tail -f ~/k2think2api3/server.log`
-- 🔍 Verify configuration: `cat ~/k2think2api3/.env`
+- 💬 Check server logs: `tail -f server.log`
+- 🔍 Verify configuration: `cat .env`
 
 ### Pro Tips
 
-1. **Keep credentials secure**: Never commit `accounts.txt` or `.env` to version control
+1. **Keep credentials secure**: Never commit `accounts.txt` or `.env`
 2. **Monitor token usage**: Check `/admin/tokens/stats` regularly
-3. **Use environment variables**: Easier than hardcoding API keys
-4. **Always use venv**: For consistent Python dependencies
+3. **Use environment variables**: Easier than hardcoding
+4. **Always use venv**: For consistent dependencies
 5. **Logs are your friend**: Check `server.log` when troubleshooting
-6. **Health checks**: Monitor `/health` endpoint in production
+6. **Health checks**: Monitor `/health` in production
 
 ---
 
@@ -1086,6 +813,5 @@ This project is provided as-is for educational and development purposes.
 
 ---
 
-*Last updated: 2024-01-15*  
-*Version: 1.0.0*
-
+*Last updated: 2025-01-15*  
+*Version: 2.1.0 - Open Proxy Mode*
