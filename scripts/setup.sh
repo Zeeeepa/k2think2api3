@@ -126,8 +126,12 @@ if [ ! -f ".env" ]; then
 # API Authentication
 VALID_API_KEY=sk-k2think-proxy-$TIMESTAMP
 
+# Set to true to accept any API key (recommended for local development)
+ALLOW_ANY_API_KEY=true
+
 # Server Configuration  
-PORT=7000
+# PORT can be overridden by SERVER_PORT environment variable at runtime
+PORT=${SERVER_PORT:-7000}
 
 # Token Management
 # Set to true if you have accounts.txt with K2 credentials

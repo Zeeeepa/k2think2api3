@@ -43,7 +43,9 @@ if [ -f ".env" ]; then
     export $(cat .env | grep -v '^#' | xargs)
 fi
 
-PORT=${PORT:-7000}
+# Prefer SERVER_PORT over .env PORT, fallback to 7000
+PORT=${SERVER_PORT:-${PORT:-7000}}
+export PORT
 
 # Check if server is already running
 if [ -f ".server.pid" ]; then

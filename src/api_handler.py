@@ -40,6 +40,13 @@ class APIHandler:
         """验证API密钥"""
         if not authorization or not authorization.startswith(APIConstants.BEARER_PREFIX):
             return False
+        
+        # 如果启用了允许任何API密钥，则接受任何非空Bearer token
+        if self.config.ALLOW_ANY_API_KEY:
+            api_key = authorization[APIConstants.BEARER_PREFIX_LENGTH:]
+            return bool(api_key.strip())
+        
+        # 否则进行严格验证
         api_key = authorization[APIConstants.BEARER_PREFIX_LENGTH:]  # 移除 "Bearer " 前缀
         return api_key == self.config.VALID_API_KEY
     
