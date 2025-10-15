@@ -40,7 +40,7 @@ class APIHandler:
         """验证API密钥 - 现在接受任何API密钥"""
         # 记录请求已通过（用于调试）
         if Config.DEBUG_LOGGING:
-            safe_log_info("API key validation bypassed - accepting any client key")
+            safe_log_info(logger, "API key validation bypassed - accepting any client key")
         # 始终返回True，接受任何API密钥（包括空值）
         return True
     
@@ -52,7 +52,7 @@ class APIHandler:
         """获取实际的模型ID - 现在始终返回K2-Think模型"""
         # 记录原始模型名（用于调试）
         if Config.DEBUG_LOGGING and model_name != APIConstants.MODEL_ID:
-            safe_log_info(f"Model name '{model_name}' mapped to '{APIConstants.MODEL_ID}'")
+            safe_log_info(logger, f"Model name '{model_name}' mapped to '{APIConstants.MODEL_ID}'")
         # 始终返回K2-Think模型，忽略客户端请求的模型名
         return APIConstants.MODEL_ID
     
