@@ -410,7 +410,7 @@ LOG_LEVEL=INFO
 The `accounts.txt` file stores K2 credentials in JSON format:
 
 ```json
-{"email": "your@email.com", "k2_password": "yourpassword"}
+{"email": "your@email.com", "password": "yourpassword"}
 ```
 
 **Security notes:**
@@ -1007,7 +1007,7 @@ ENABLE_TOKEN_AUTO_UPDATE=false
 编辑 `accounts.txt` 文件：
 
 ```json
-{"email": "your@email.com", "k2_password": "yourpassword"}
+{"email": "your@email.com", "password": "yourpassword"}
 ```
 
 #### 更改服务器端口

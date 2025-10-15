@@ -133,12 +133,31 @@ class K2ThinkTokenExtractor:
                     
                     try:
                         account_data = json.loads(line)
-                        if 'email' in account_data and 'k2_password' in account_data:
-                            accounts.append({
-                                'email': account_data['email'],
-                                'password': account_data['k2_password']
-                            })
-                    except:
+                        
+                        # Validate required fields
+                        if 'email' not in account_data:
+                            print(f"⚠️  警告: 账户配置缺少 'email' 字段，已跳过")
+                            continue
+                        
+                        # Support both 'password' (correct) and 'k2_password' (deprecated) for backward compatibility
+                        password = None
+                        if 'password' in account_data:
+                            password = account_data['password']
+                        elif 'k2_password' in account_data:
+                            print(f"⚠️  警告: 检测到已弃用的 'k2_password' 字段，请使用 'password' 字段")
+                            print(f"   账户: {account_data['email']}")
+                            print(f"   正确格式: {{\"email\": \"...\", \"password\": \"...\"}}")
+                            password = account_data['k2_password']
+                        else:
+                            print(f"❌ 错误: 账户 {account_data['email']} 缺少 'password' 字段")
+                            continue
+                        
+                        accounts.append({
+                            'email': account_data['email'],
+                            'password': password
+                        })
+                    except Exception as e:
+                        print(f"⚠️  警告: 解析账户配置失败: {e}")
                         continue
             
             return accounts

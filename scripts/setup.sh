@@ -103,7 +103,7 @@ if [ ! -f "accounts.txt" ]; then
         else
             log_warning "Skipped credential input"
             log_info "You can create accounts.txt manually later:"
-            echo '   Format: {"email": "your@email.com", "k2_password": "yourpassword"}'
+            echo '   Format: {"email": "your@email.com", "password": "yourpassword"}'
         fi
     fi
 else
