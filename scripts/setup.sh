@@ -63,13 +63,13 @@ mkdir -p data
 log_success "Data directory ready"
 echo ""
 
-# Create empty tokens.txt if it doesn't exist
-if [ ! -f "tokens.txt" ]; then
-    log_info "Creating tokens.txt file..."
-    echo '[]' > tokens.txt
-    log_success "tokens.txt created (will be populated when tokens are available)"
+# Create empty data/tokens.txt if it doesn't exist (avoid '[]' which is treated as a bogus token)
+if [ ! -f "data/tokens.txt" ]; then
+    log_info "Creating data/tokens.txt file..."
+    echo "# Tokens will be auto-generated" > data/tokens.txt
+    log_success "data/tokens.txt created (will be populated by auto-update)"
 else
-    log_success "tokens.txt already exists"
+    log_success "data/tokens.txt already exists"
 fi
 echo ""
 
@@ -136,6 +136,9 @@ PORT=${SERVER_PORT:-7000}
 # Token Management
 # Set to true if you have accounts.txt with K2 credentials
 ENABLE_TOKEN_AUTO_UPDATE=$AUTO_UPDATE
+
+# Unified token file path
+TOKENS_FILE=data/tokens.txt
 
 # Optional: Proxy settings (if needed)
 # HTTP_PROXY=http://proxy:port
