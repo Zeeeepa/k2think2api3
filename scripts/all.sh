@@ -67,15 +67,48 @@ echo ""
 echo ""
 
 # ============================================================================
-# PHASE 2: START SERVER
+# PHASE 2: GENERATE TOKENS
 # ============================================================================
 echo "╔════════════════════════════════════════════════════════╗"
-echo "║              🚀 PHASE 2: START SERVER                  ║"
+echo "║            🔑 PHASE 2: GENERATE TOKENS                 ║"
+echo "╚════════════════════════════════════════════════════════╝"
+echo ""
+
+log_info "Activating virtual environment..."
+source venv/bin/activate
+
+log_info "Generating K2Think tokens..."
+if python3 get_tokens.py; then
+    log_success "Tokens generated successfully"
+    
+    # Verify tokens file exists and has content
+    if [ -f "data/tokens.txt" ] && [ -s "data/tokens.txt" ]; then
+        TOKEN_COUNT=$(grep -v '^#' data/tokens.txt | grep -v '^$' | wc -l)
+        log_success "Token pool ready with ${TOKEN_COUNT} token(s)"
+    else
+        log_error "Token file is empty or missing!"
+        exit 1
+    fi
+else
+    log_error "Token generation failed!"
+    exit 1
+fi
+
+log_success "Phase 2 Complete: Tokens are ready"
+
+echo ""
+echo ""
+
+# ============================================================================
+# PHASE 3: START SERVER
+# ============================================================================
+echo "╔════════════════════════════════════════════════════════╗"
+echo "║              🚀 PHASE 3: START SERVER                  ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo ""
 
 if bash scripts/start.sh; then
-    log_success "Phase 2 Complete: Server is running"
+    log_success "Phase 3 Complete: Server is running"
 else
     log_error "Server start failed!"
     exit 1
@@ -84,19 +117,27 @@ fi
 echo ""
 echo ""
 
-# Wait a moment for server to stabilize
-sleep 2
+# Wait for server to stabilize and load tokens
+log_info "Waiting for server to load token pool..."
+sleep 5
+
+# Verify tokens loaded by checking admin endpoint
+if curl -s "http://localhost:${SERVER_PORT:-7000}/admin/tokens/stats" | grep -q '"total_tokens"'; then
+    log_success "Token pool loaded successfully"
+else
+    log_warning "Token pool may need more time to initialize"
+fi
 
 # ============================================================================
-# PHASE 3: TEST API
+# PHASE 4: TEST API
 # ============================================================================
 echo "╔════════════════════════════════════════════════════════╗"
-echo "║               🧪 PHASE 3: TEST API                     ║"
+echo "║               🧪 PHASE 4: TEST API                     ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo ""
 
 if bash scripts/send_request.sh; then
-    log_success "Phase 3 Complete: API tests passed"
+    log_success "Phase 4 Complete: API tests passed"
 else
     log_warning "Some API tests failed (check output above)"
 fi
@@ -290,4 +331,3 @@ echo ""
 
 log_success "All systems operational!"
 echo ""
-
