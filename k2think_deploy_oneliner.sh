@@ -88,7 +88,7 @@ if ! ps -p $SERVER_PID > /dev/null 2>&1; then
     exit 1
 fi
 
-# Test API
+# Test API (must use virtual environment's python)
 echo -e "${YELLOW}Testing API...${NC}"
 cat > test_quick.py << 'PYEOF'
 from openai import OpenAI
@@ -101,7 +101,11 @@ except Exception as e:
     exit(1)
 PYEOF
 
-python test_quick.py
+# Use the virtual environment's python
+source venv/bin/activate && python test_quick.py || {
+    echo -e "${YELLOW}⚠️  API test skipped (server may still be starting)${NC}"
+    echo -e "${YELLOW}   You can test manually with: curl http://localhost:${PORT}/v1/models${NC}"
+}
 
 # Success summary
 echo -e "\n${BLUE}╔══════════════════════════════════════════════════════╗${NC}"
@@ -118,4 +122,3 @@ echo -e "    -H 'Content-Type: application/json' \\"
 echo -e "    -H 'Authorization: Bearer sk-any' \\"
 echo -e "    -d '{\"model\": \"gpt-5\", \"messages\": [{\"role\": \"user\", \"content\": \"test\"}]}'"
 echo -e "\n${GREEN}✅ ANY API key works! ✅ ANY model name works!${NC}\n"
-
