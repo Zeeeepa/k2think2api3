@@ -106,6 +106,7 @@ class LogMessages:
 # HTTP头常量
 class HeaderConstants:
     AUTHORIZATION = "Authorization"
+    COOKIE = "Cookie"
     CONTENT_TYPE = "Content-Type"
     ACCEPT = "Accept"
     ORIGIN = "Origin"
