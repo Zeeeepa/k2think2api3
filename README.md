@@ -1,53 +1,101 @@
-# K2Think API Proxy - Complete Documentation
+# K2Think API Proxy v2.0 🚀
 
-**🚀 OpenAI-compatible API proxy for MBZUAI K2-Think model | Built with FastAPI**
+**OpenAI-compatible API proxy for MBZUAI K2-Think model with Interactive Port Selection & Auto Environment Management**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+
+---
+
+## ✨ What's New in v2.0
+
+- 🎯 **Interactive Port Selection** - Choose any available port or auto-detect conflicts
+- 🔄 **Smart Port Conflict Resolution** - Automatically detects and helps resolve port issues
+- 📦 **Auto Environment Activation** - One command to activate venv and change directory
+- 🛠️ **Server Management Scripts** - Easy start/stop/restart/status/logs commands
+- 🎨 **Beautiful CLI Interface** - Color-coded output with ASCII art banners
+- 📊 **Deployment Logging** - Track all deployments with detailed logs
+- 🔧 **Installation Management** - Upgrade or reinstall with preserved configurations
+- 🗑️ **Clean Uninstall** - Complete removal script included
 
 ---
 
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Installation Methods](#installation-methods)
-3. [Core Features](#core-features)
-4. [Project Structure](#project-structure)
-5. [Deployment Scripts Guide](#deployment-scripts-guide)
+2. [Features](#features)
+3. [Installation](#installation)
+4. [Post-Installation](#post-installation)
+5. [Server Management](#server-management)
 6. [Configuration](#configuration)
 7. [Using the API](#using-the-api)
-8. [Server Management](#server-management)
-9. [API Reference](#api-reference)
-10. [Troubleshooting](#troubleshooting)
-11. [Advanced Features](#advanced-features)
-12. [中文文档](#中文文档)
+8. [Troubleshooting](#troubleshooting)
+9. [Advanced Topics](#advanced-topics)
+10. [中文文档](#中文文档)
 
 ---
 
 ## Quick Start
 
-### ⚡ One-Command Installation (Recommended)
-
-The fastest way to get started - everything is automated:
+### 🚀 One-Liner Deployment (New in v2.0!)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/install.sh)
+export K2_EMAIL="your@email.com" && \
+export K2_PASSWORD="yourpassword" && \
+curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/codegen-bot/interactive-port-venv-cd-upgrade-1760647609/k2think_deploy_oneliner.sh | bash
 ```
 
-**What happens automatically:**
-1. ✅ Asks for your K2 credentials
-2. ✅ Clones the repository
-3. ✅ Installs dependencies
-4. ✅ Starts the server on port 7000
-5. ✅ Runs a test request
-6. ✅ Displays your API key and usage instructions
+**What happens:**
+1. ✅ **Interactive port selection** with conflict detection
+2. ✅ Repository cloned and configured
+3. ✅ Virtual environment created
+4. ✅ Dependencies installed
+5. ✅ Server started and verified
+6. ✅ Helper scripts generated
 
-### With Pre-Set Credentials (No Prompts)
+**Example interactive flow:**
+```
+Enter port number (default 7000): 8000
+✅ Port 8000 is available!
+...
+✅ DEPLOYMENT SUCCESSFUL ✅
+```
+
+### 📦 Activate Your Environment
+
+After deployment, activate the environment with:
 
 ```bash
-export K2_EMAIL="your@email.com"
-export K2_PASSWORD="yourpassword"
-bash <(curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/install.sh)
+source ~/k2think2api3/k2think_activate.sh
 ```
 
-### Alternative: All-in-One Smart Script
+This will:
+- ✅ Change to the k2think2api3 directory
+- ✅ Activate the virtual environment
+- ✅ Display server status
+- ✅ Show available commands
+
+### 🔧 Optional: Add Permanent Alias
+
+For quick activation in future sessions:
+
+**Bash:**
+```bash
+echo 'alias k2think="source ~/k2think2api3/k2think_activate.sh"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Zsh:**
+```bash
+echo 'alias k2think="source ~/k2think2api3/k2think_activate.sh"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Then just run `k2think` anytime to activate!
+
+---
+
+## Features
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Zeeeepa/k2think2api3/main/scripts/all.sh | bash
@@ -1088,4 +1136,3 @@ This project is provided as-is for educational and development purposes.
 
 *Last updated: 2024-01-15*  
 *Version: 1.0.0*
-

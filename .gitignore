@@ -15,3 +15,5 @@ tokens.txt.backup
 python-k2
 activate-k2.sh
 .server.pid
+k2think_deployment.log
+.env.backup.*
