@@ -80,7 +80,7 @@ if [ ! -f "accounts.txt" ]; then
     # Try environment variables first
     if [ ! -z "${K2_EMAIL:-}" ] && [ ! -z "${K2_PASSWORD:-}" ]; then
         log_success "Using credentials from environment variables"
-        echo "{\"email\": \"$K2_EMAIL\", \"k2_password\": \"$K2_PASSWORD\"}" > accounts.txt
+        echo "{\"email\": \"$K2_EMAIL\", \"password\": \"$K2_PASSWORD\"}" > accounts.txt
         log_success "accounts.txt created with environment credentials"
     else
         # Interactive prompt
@@ -96,14 +96,14 @@ if [ ! -f "accounts.txt" ]; then
         echo ""
         
         if [ ! -z "$user_email" ] && [ ! -z "$user_password" ]; then
-            echo "{\"email\": \"$user_email\", \"k2_password\": \"$user_password\"}" > accounts.txt
+            echo "{\"email\": \"$user_email\", \"password\": \"$user_password\"}" > accounts.txt
             log_success "accounts.txt created with your credentials"
             export K2_EMAIL="$user_email"
             export K2_PASSWORD="$user_password"
         else
             log_warning "Skipped credential input"
             log_info "You can create accounts.txt manually later:"
-            echo '   Format: {"email": "your@email.com", "k2_password": "yourpassword"}'
+            echo '   Format: {"email": "your@email.com", "password": "yourpassword"}'
         fi
     fi
 else
