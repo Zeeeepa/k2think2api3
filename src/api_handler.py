@@ -291,6 +291,7 @@ class APIHandler:
             ),
             HeaderConstants.CONTENT_TYPE: HeaderConstants.APPLICATION_JSON,
             HeaderConstants.AUTHORIZATION: f"{APIConstants.BEARER_PREFIX}{token}",
+            HeaderConstants.COOKIE: f"token={token}",
             HeaderConstants.ORIGIN: "https://www.k2think.ai",
             HeaderConstants.REFERER: "https://www.k2think.ai/c/" + k2think_payload["chat_id"],
             HeaderConstants.USER_AGENT: HeaderConstants.DEFAULT_USER_AGENT
