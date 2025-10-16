@@ -55,10 +55,65 @@ class APIHandler:
         return model_name != APIConstants.MODEL_ID_NOTHINK
     
     def get_actual_model_id(self, model_name: str) -> str:
-        """获取实际的模型ID（将nothink版本映射回原始模型）"""
+        """获取实际的模型ID（支持任意模型名映射到服务器模型，保留nothink切换）"""
+        # 如果请求的是nothink版本，映射到标准模型（保留原有行为）
         if model_name == APIConstants.MODEL_ID_NOTHINK:
             return APIConstants.MODEL_ID
-        return model_name
+        # 对于任何其他模型名（包括 gpt-5, gpt-4, 等），统一映射到服务器模型
+        return APIConstants.MODEL_ID
+    
+    
+    async def _wait_for_tokens(self, max_retries: int = 5, initial_delay: float = 0.5) -> str:
+        """
+        等待并获取token，如果token池为空则触发自动刷新
+        
+        Args:
+            max_retries: 最大重试次数
+            initial_delay: 初始延迟（秒），使用指数退避
+            
+        Returns:
+            str: 可用的token
+            
+        Raises:
+            HTTPException: 无法获取token时抛出503错误
+        """
+        delay = initial_delay
+        for attempt in range(max_retries):
+            token = self.token_manager.get_next_token()
+            if token:
+                return token
+            
+            # 仅在第一次失败时触发强制更新
+            if attempt == 0 and Config.ENABLE_TOKEN_AUTO_UPDATE:
+                logging.info("Token池为空，触发自动刷新...")
+                try:
+                    await Config.get_token_updater().force_update_async()
+                except Exception as e:
+                    logging.error(f"触发token刷新失败: {e}")
+            
+            # 等待后重试
+            if attempt < max_retries - 1:
+                logging.info(f"等待token... (尝试 {attempt + 1}/{max_retries}, 延迟 {delay:.1f}s)")
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 5.0)  # 指数退避，最大5秒
+        
+        # 所有重试失败，返回503错误
+        if Config.ENABLE_TOKEN_AUTO_UPDATE:
+            error_message = "Token池暂时为空。已尝试自动刷新但未成功，请稍后重试或检查 /admin/tokens/updater/status 查看更新器状态。"
+            safe_log_warning(logger, "Token刷新失败，请检查K2_EMAIL/K2_PASSWORD配置")
+        else:
+            error_message = "所有token都已失效，请检查token配置或启用自动更新（设置 ENABLE_TOKEN_AUTO_UPDATE=true）。"
+            safe_log_error(logger, "没有可用的token且未启用自动更新")
+        
+        raise HTTPException(
+            status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
+            detail={
+                "error": {
+                    "message": error_message,
+                    "type": ErrorMessages.API_ERROR
+                }
+            }
+        )
     
     async def get_models(self) -> ModelsResponse:
         """获取模型列表"""
@@ -86,6 +141,10 @@ class APIHandler:
         # 判断是否应该输出思考内容
         output_thinking = self.should_output_thinking(request.model)
         actual_model_id = self.get_actual_model_id(request.model)
+        
+        # 记录模型映射情况
+        if request.model != actual_model_id:
+            logging.info(f"Model alias: {request.model} -> {actual_model_id}")
         
         try:
             # 处理消息
@@ -367,26 +426,7 @@ class APIHandler:
         last_exception = None
         
         for attempt in range(max_retries):
-            # 获取下一个可用token
-            token = self.token_manager.get_next_token()
-            if not token:
-                # 根据是否启用自动更新提供不同的错误信息
-                if Config.ENABLE_TOKEN_AUTO_UPDATE:
-                    error_message = "Token池暂时为空，可能正在自动更新中。请稍后重试或检查自动更新服务状态。"
-                    safe_log_warning(logger, "没有可用的token，可能正在自动更新中")
-                else:
-                    error_message = "所有token都已失效，请检查token配置或重新加载token文件。"
-                    safe_log_error(logger, "没有可用的token")
-                
-                raise HTTPException(
-                    status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
-                    detail={
-                        "error": {
-                            "message": error_message,
-                            "type": ErrorMessages.API_ERROR
-                        }
-                    }
-                )
+            token = await self._wait_for_tokens()
             
             # 构建请求头
             headers = self._build_request_headers(request, k2think_payload, token)
@@ -471,26 +511,7 @@ class APIHandler:
         last_exception = None
         
         for attempt in range(max_retries):
-            # 获取下一个可用token
-            token = self.token_manager.get_next_token()
-            if not token:
-                # 根据是否启用自动更新提供不同的错误信息
-                if Config.ENABLE_TOKEN_AUTO_UPDATE:
-                    error_message = "Token池暂时为空，可能正在自动更新中。请稍后重试或检查自动更新服务状态。"
-                    safe_log_warning(logger, "没有可用的token，可能正在自动更新中")
-                else:
-                    error_message = "所有token都已失效，请检查token配置或重新加载token文件。"
-                    safe_log_error(logger, "没有可用的token")
-                
-                raise HTTPException(
-                    status_code=APIConstants.HTTP_SERVICE_UNAVAILABLE,
-                    detail={
-                        "error": {
-                            "message": error_message,
-                            "type": ErrorMessages.API_ERROR
-                        }
-                    }
-                )
+            token = await self._wait_for_tokens()
             
             # 构建请求头
             headers = self._build_request_headers(request, k2think_payload, token)

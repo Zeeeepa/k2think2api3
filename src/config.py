@@ -23,7 +23,8 @@ class Config:
     K2THINK_API_URL: str = os.getenv("K2THINK_API_URL", "https://www.k2think.ai/api/chat/completions")
     
     # Token管理配置
-    TOKENS_FILE: str = os.getenv("TOKENS_FILE", "tokens.txt")
+    # 统一使用 data/tokens.txt 以匹配生成脚本 (get_tokens.py, scripts/all.sh)
+    TOKENS_FILE: str = os.getenv("TOKENS_FILE", "data/tokens.txt")
     MAX_TOKEN_FAILURES: int = int(os.getenv("MAX_TOKEN_FAILURES", "3"))
     
     # Token自动更新配置
