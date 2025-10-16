@@ -249,7 +249,8 @@ def main():
     
     # 支持命令行参数
     accounts_file = sys.argv[1] if len(sys.argv) > 1 else "./accounts.txt"
-    tokens_file = sys.argv[2] if len(sys.argv) > 2 else "./tokens.txt"
+    # 默认使用 data/tokens.txt 以匹配服务器配置
+    tokens_file = sys.argv[2] if len(sys.argv) > 2 else os.getenv("TOKENS_FILE", "data/tokens.txt")
     
     extractor = K2ThinkTokenExtractor()
     success = extractor.process_all_accounts(accounts_file, tokens_file)
