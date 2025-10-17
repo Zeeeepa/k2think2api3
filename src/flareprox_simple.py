@@ -96,8 +96,9 @@ class SimpleFlareProx:
                 logger.info(f"✅ Created worker: {worker_name}")
                 return worker_url
             else:
-                error_text = response.text[:200] if response.text else "No error message"
-                logger.error(f"Failed to create worker: {response.status_code} - {error_text}")
+                error_text = response.text[:500] if response.text else "No error message"
+                logger.error(f"Failed to create worker: {response.status_code}")
+                logger.error(f"Error details: {error_text}")
                 return None
                 
         except Exception as e:
