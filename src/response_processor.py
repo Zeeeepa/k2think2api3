@@ -258,9 +258,6 @@ class ResponseProcessor:
                 return response
                 
         except httpx.HTTPStatusError as e:
-            if use_flareprox:
-                mark_flareprox_request_result(original_url, False)
-            
             safe_log_error(logger, f"HTTP状态错误: {e.response.status_code} - {e.response.text}")
             if client and not stream:
                 await client.aclose()
