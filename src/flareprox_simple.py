@@ -5,6 +5,7 @@ Creates workers on-demand based on request volume
 import os
 import logging
 import random
+import json
 import httpx
 from typing import Optional
 
@@ -75,20 +76,28 @@ class SimpleFlareProx:
             worker_name = f"k2think-{int(time.time())}-{random.randint(100000, 999999)}"
             
             url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/workers/scripts/{worker_name}"
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Content-Type": "application/javascript"
+            
+            # Use multipart/form-data format as required by Cloudflare API
+            files = {
+                'metadata': (None, json.dumps({
+                    "body_part": "script",
+                    "main_module": "worker.js"
+                })),
+                'script': ('worker.js', WORKER_SCRIPT, 'application/javascript')
             }
             
-            response = httpx.put(url, headers=headers, content=WORKER_SCRIPT, timeout=30.0)
+            headers = {"Authorization": f"Bearer {self.api_token}"}
+            
+            response = httpx.put(url, headers=headers, files=files, timeout=60.0)
             
             if response.status_code in [200, 201]:
                 worker_url = f"https://{worker_name}.pixeliumperfecto.workers.dev"
                 self.workers.append(worker_url)
-                logger.info(f"Created FlareProx worker: {worker_name}")
+                logger.info(f"✅ Created worker: {worker_name}")
                 return worker_url
             else:
-                logger.error(f"Failed to create worker: {response.status_code}")
+                error_text = response.text[:200] if response.text else "No error message"
+                logger.error(f"Failed to create worker: {response.status_code} - {error_text}")
                 return None
                 
         except Exception as e:
@@ -149,4 +158,3 @@ def get_flareprox_url(target_url: str) -> Optional[str]:
 def generate_random_ip() -> str:
     """Generate a random IP address for logging"""
     return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
-
