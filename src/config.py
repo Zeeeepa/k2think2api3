@@ -54,6 +54,13 @@ class Config:
     STREAM_CHUNK_SIZE: int = int(os.getenv("STREAM_CHUNK_SIZE", "50"))
     MAX_STREAM_TIME: float = float(os.getenv("MAX_STREAM_TIME", "10.0"))
     
+    # FlareProx配置
+    USE_FLAREPROX: bool = os.getenv("USE_FLAREPROX", "false").lower() == "true"
+    ENABLE_FLAREPROX: bool = os.getenv("ENABLE_FLAREPROX", "false").lower() == "true"
+    CLOUDFLARE_API_TOKEN: str = os.getenv("CLOUDFLARE_API_TOKEN", "")
+    CLOUDFLARE_ACCOUNT_ID: str = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+    FLAREPROX_MAX_WORKERS: int = int(os.getenv("FLAREPROX_MAX_WORKERS", "5"))
+    
     # 日志配置
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
     
