@@ -11,45 +11,48 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Cloudflare Worker Script (same as before)
+# Cloudflare Worker Script (Service Worker format - not ES6 modules)
 WORKER_SCRIPT = """
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
-    if (!targetUrl) {
-      return new Response('Missing url parameter', { status: 400 });
-    }
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
 
-    function generateRandomIP() {
-      return `${Math.floor(Math.random() * 255) + 1}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
-    }
-
-    const forwardedFor = generateRandomIP();
-    const headers = new Headers(request.headers);
-    headers.set('X-Forwarded-For', forwardedFor);
-    headers.set('X-Real-IP', forwardedFor);
-
-    try {
-      const response = await fetch(targetUrl, {
-        method: request.method,
-        headers: headers,
-        body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
-      });
-      
-      const newHeaders = new Headers(response.headers);
-      newHeaders.set('X-Proxy-IP', forwardedFor);
-      
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders,
-      });
-    } catch (error) {
-      return new Response(`Proxy error: ${error.message}`, { status: 502 });
-    }
+async function handleRequest(request) {
+  const url = new URL(request.url);
+  const targetUrl = url.searchParams.get('url');
+  
+  if (!targetUrl) {
+    return new Response('Missing url parameter', { status: 400 });
   }
-};
+
+  function generateRandomIP() {
+    return `${Math.floor(Math.random() * 255) + 1}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
+  }
+
+  const forwardedFor = generateRandomIP();
+  const headers = new Headers(request.headers);
+  headers.set('X-Forwarded-For', forwardedFor);
+  headers.set('X-Real-IP', forwardedFor);
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: request.method,
+      headers: headers,
+      body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+    });
+    
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set('X-Proxy-IP', forwardedFor);
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders,
+    });
+  } catch (error) {
+    return new Response(`Proxy error: ${error.message}`, { status: 502 });
+  }
+}
 """
 
 
