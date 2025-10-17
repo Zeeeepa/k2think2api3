@@ -20,7 +20,7 @@ from src.constants import (
 from src.exceptions import UpstreamError, TimeoutError as ProxyTimeoutError
 from src.tool_handler import ToolHandler
 from src.utils import safe_log_error, safe_log_info, safe_log_warning
-from src.flareprox import get_flareprox_worker_url, mark_flareprox_request_result
+from src.flareprox_simple import get_flareprox_url, generate_random_ip
 
 logger = logging.getLogger(__name__)
 
@@ -223,19 +223,11 @@ class ResponseProcessor:
         try:
             client = await self.create_http_client()
 
-            # Check if FlareProx is enabled and modify URL if needed
-            use_flareprox = False
-            original_url = url
-            flareprox_worker_url = None
-            flareprox_ip = None
-            flareprox_url = get_flareprox_worker_url(url)
+            # Try FlareProx routing
+            flareprox_url = get_flareprox_url(url)
             if flareprox_url:
-                flareprox_worker_url = flareprox_url
                 url = flareprox_url
-                use_flareprox = True
-                # Generate random IP that FlareProx will use
-                flareprox_ip = f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
-                logger.debug(f"Using FlareProx: {original_url} -> {url}")
+                flareprox_ip = generate_random_ip()
             
             
             if stream:
@@ -259,12 +251,9 @@ class ResponseProcessor:
                 
                 response.raise_for_status()
 
-                # Mark FlareProx request as successful
-                if use_flareprox:
-                    mark_flareprox_request_result(original_url, True)
-                    # Log the FlareProx IP used for this request
+                # Log FlareProx IP if used
+                if flareprox_url:
                     logger.info(f"✅ Flareproxed ip: '{flareprox_ip}'")
-                    logger.debug(f"FlareProx worker: {flareprox_worker_url}")
                 
                 return response
                 
