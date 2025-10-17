@@ -38,6 +38,7 @@ from src.constants import APIConstants
 from src.exceptions import K2ThinkProxyError
 from src.models import ChatCompletionRequest
 from src.api_handler import APIHandler
+from src.flareprox import init_flareprox, get_flareprox_pool
 
 # 初始化配置
 try:
@@ -53,6 +54,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("K2Think API Proxy 启动中...")
+    
+    # 初始化FlareProx（如果启用）
+    try:
+        init_flareprox()
+        pool = get_flareprox_pool()
+        if pool and pool.enabled:
+            logger.info(f"FlareProx已启用 - Worker池大小: {len(pool.workers)}")
+    except Exception as e:
+        logger.warning(f"FlareProx初始化失败: {e}")
     
     # 如果启用了token自动更新，启动更新服务
     if Config.ENABLE_TOKEN_AUTO_UPDATE:

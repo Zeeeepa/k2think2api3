@@ -19,6 +19,7 @@ from src.constants import (
 from src.exceptions import UpstreamError, TimeoutError as ProxyTimeoutError
 from src.tool_handler import ToolHandler
 from src.utils import safe_log_error, safe_log_info, safe_log_warning
+from src.flareprox import get_flareprox_worker_url, mark_flareprox_request_result
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,16 @@ class ResponseProcessor:
         
         try:
             client = await self.create_http_client()
+
+            # Check if FlareProx is enabled and modify URL if needed
+            use_flareprox = False
+            original_url = url
+            flareprox_url = get_flareprox_worker_url(url)
+            if flareprox_url:
+                url = flareprox_url
+                use_flareprox = True
+                logger.debug(f"Using FlareProx: {original_url} -> {url}")
+            
             
             if stream:
                 # 流式请求返回context manager
@@ -241,9 +252,17 @@ class ResponseProcessor:
                         safe_log_error(logger, "无法读取错误响应体")
                 
                 response.raise_for_status()
+
+                # Mark FlareProx request as successful
+                if use_flareprox:
+                    mark_flareprox_request_result(original_url, True)
+                
                 return response
                 
         except httpx.HTTPStatusError as e:
+            if use_flareprox:
+                mark_flareprox_request_result(original_url, False)
+            
             safe_log_error(logger, f"HTTP状态错误: {e.response.status_code} - {e.response.text}")
             if client and not stream:
                 await client.aclose()
