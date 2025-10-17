@@ -7,6 +7,7 @@ import time
 import asyncio
 import logging
 import uuid
+import random
 from datetime import datetime
 from typing import Dict, AsyncGenerator, Tuple, Optional
 import pytz
@@ -225,10 +226,15 @@ class ResponseProcessor:
             # Check if FlareProx is enabled and modify URL if needed
             use_flareprox = False
             original_url = url
+            flareprox_worker_url = None
+            flareprox_ip = None
             flareprox_url = get_flareprox_worker_url(url)
             if flareprox_url:
+                flareprox_worker_url = flareprox_url
                 url = flareprox_url
                 use_flareprox = True
+                # Generate random IP that FlareProx will use
+                flareprox_ip = f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
                 logger.debug(f"Using FlareProx: {original_url} -> {url}")
             
             
@@ -256,6 +262,9 @@ class ResponseProcessor:
                 # Mark FlareProx request as successful
                 if use_flareprox:
                     mark_flareprox_request_result(original_url, True)
+                    # Log the FlareProx IP used for this request
+                    logger.info(f"✅ Flareproxed ip: '{flareprox_ip}'")
+                    logger.debug(f"FlareProx worker: {flareprox_worker_url}")
                 
                 return response
                 
