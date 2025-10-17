@@ -223,11 +223,17 @@ class ResponseProcessor:
         try:
             client = await self.create_http_client()
 
-            # Try FlareProx routing
-            flareprox_url = get_flareprox_url(url)
-            if flareprox_url:
-                url = flareprox_url
-                flareprox_ip = generate_random_ip()
+            # Try FlareProx routing (only if enabled)
+            flareprox_url = None
+            flareprox_ip = None
+            if self.config.USE_FLAREPROX or self.config.ENABLE_FLAREPROX:
+                flareprox_url = get_flareprox_url(url)
+                if flareprox_url:
+                    url = flareprox_url
+                    flareprox_ip = generate_random_ip()
+                    logger.info(f"🔀 FlareProx enabled: routing through {flareprox_url[:50]}...")
+            else:
+                logger.debug("📡 FlareProx disabled: using direct API call")
             
             
             if stream:
