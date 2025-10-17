@@ -110,6 +110,7 @@ class SimpleFlareProx:
     
     def get_worker_url(self, target_url: str) -> Optional[str]:
         """Get a worker URL, creating one if needed"""
+        logger.info(f"🔍 get_worker_url called: enabled={self.enabled}, workers={len(self.workers)}")
         if not self.enabled:
             return None
         
