@@ -252,7 +252,7 @@ def extract_tokens(repo_dir):
             print_info(f"Using {script}")
             if script.endswith('.py'):
                 result = run_command(
-                    f'{python_path} {script_path}',
+                    f'cd {repo_dir} && {python_path} {script}',
                     "Extracting tokens from K2Think API",
                     check=False
                 )
@@ -558,6 +558,11 @@ def main():
         action='store_true',
         help='Skip system dependencies installation'
     )
+    parser.add_argument(
+        '--yes', '-y',
+        action='store_true',
+        help='Skip confirmation prompt (non-interactive mode)'
+    )
     
     args = parser.parse_args()
     
@@ -569,11 +574,14 @@ def main():
     print(f"   Directory: {Colors.CYAN}{args.dir}{Colors.END}")
     print()
     
-    # Confirm
-    confirm = input(f"{Colors.YELLOW}Proceed with installation? (Y/n): {Colors.END}").strip().lower()
-    if confirm and confirm != 'y':
-        print("Installation cancelled.")
-        sys.exit(0)
+    # Confirm (skip if --yes flag is provided)
+    if not args.yes:
+        confirm = input(f"{Colors.YELLOW}Proceed with installation? (Y/n): {Colors.END}").strip().lower()
+        if confirm and confirm != 'y':
+            print("Installation cancelled.")
+            sys.exit(0)
+    else:
+        print(f"{Colors.GREEN}Running in non-interactive mode (--yes flag provided){Colors.END}\n")
     
     try:
         # Step 1: Install system dependencies
@@ -636,4 +644,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
