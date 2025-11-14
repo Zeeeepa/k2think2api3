@@ -7,6 +7,7 @@ import time
 import asyncio
 import logging
 import uuid
+import random
 from datetime import datetime
 from typing import Dict, AsyncGenerator, Tuple, Optional
 import pytz
@@ -19,6 +20,7 @@ from src.constants import (
 from src.exceptions import UpstreamError, TimeoutError as ProxyTimeoutError
 from src.tool_handler import ToolHandler
 from src.utils import safe_log_error, safe_log_info, safe_log_warning
+from src.flareprox_simple import get_flareprox_url, generate_random_ip
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +222,19 @@ class ResponseProcessor:
         
         try:
             client = await self.create_http_client()
+
+            # Try FlareProx routing (only if enabled)
+            flareprox_url = None
+            flareprox_ip = None
+            if self.config.USE_FLAREPROX or self.config.ENABLE_FLAREPROX:
+                flareprox_url = get_flareprox_url(url)
+                if flareprox_url:
+                    url = flareprox_url
+                    flareprox_ip = generate_random_ip()
+                    logger.info(f"🔀 FlareProx enabled: routing through {flareprox_url[:50]}...")
+            else:
+                logger.debug("📡 FlareProx disabled: using direct API call")
+            
             
             if stream:
                 # 流式请求返回context manager
@@ -241,6 +256,11 @@ class ResponseProcessor:
                         safe_log_error(logger, "无法读取错误响应体")
                 
                 response.raise_for_status()
+
+                # Log FlareProx IP if used
+                if flareprox_url:
+                    logger.info(f"✅ Flareproxed ip: '{flareprox_ip}'")
+                
                 return response
                 
         except httpx.HTTPStatusError as e:

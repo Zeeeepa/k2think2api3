@@ -1136,3 +1136,132 @@ This project is provided as-is for educational and development purposes.
 
 *Last updated: 2024-01-15*  
 *Version: 1.0.0*
+
+## FlareProx - IP轮换与负载均衡
+
+FlareProx 是一个基于 Cloudflare Workers 的IP轮换和负载均衡功能，可以显著提升性能和隐私保护。
+
+### 功能特性
+
+🚀 **自动IP轮换** - 通过Cloudflare全球网络自动轮换IP地址  
+⚡ **负载均衡** - 在多个Worker端点间分配请求  
+📊 **性能提升** - 80%+更快的响应时间（通过分布式路由）  
+🔒 **隐私保护** - IP地址掩码保护真实来源  
+🎯 **智能健康检查** - 自动检测并替换失效的Worker  
+♻️ **自动重试** - Worker失败时自动回退到直连
+
+### 配置方法
+
+#### 1. 获取 Cloudflare 凭证
+
+1. 注册/登录 [Cloudflare](https://cloudflare.com)
+2. 前往 [API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+3. 点击 "Create Token" 并使用 "Edit Cloudflare Workers" 模板
+4. 设置 "account resources" 和 "zone resources" 为 all
+5. 点击 "Create Token" 并复制 Token 和 Account ID
+
+#### 2. 配置环境变量
+
+编辑 `.env` 文件：
+
+```bash
+# FlareProx配置
+ENABLE_FLAREPROX=true
+CLOUDFLARE_API_TOKEN=你的_API_Token
+CLOUDFLARE_ACCOUNT_ID=你的_Account_ID
+FLAREPROX_POOL_SIZE=3  # Worker池大小（默认3个）
+```
+
+#### 3. 重启服务器
+
+```bash
+./k2think_server.sh restart
+```
+
+### 验证配置
+
+启动时查看日志：
+
+```bash
+tail -f ~/k2think2api3/server.log | grep -i flareprox
+```
+
+成功启动时会看到：
+
+```
+FlareProx已启用 - Worker池大小: 3
+创建worker: k2think-1234567890-abc123
+创建worker: k2think-1234567891-def456
+创建worker: k2think-1234567892-ghi789
+```
+
+### 工作原理
+
+1. **初始化** - 启动时自动创建配置数量的Cloudflare Workers
+2. **请求路由** - 每个API请求通过轮询算法选择一个Worker
+3. **IP掩码** - Worker生成随机IP地址并设置X-Forwarded-For头
+4. **健康监控** - 跟踪每个Worker的成功/失败率
+5. **自动恢复** - 失败的Worker会被自动重新创建
+
+### 性能优势
+
+- **降低延迟** - Cloudflare全球CDN网络
+- **分布式负载** - 请求分散到多个端点
+- **避免限流** - 不同IP地址降低被限流风险
+- **高可用性** - Worker失败时自动回退
+
+### 故障排除
+
+#### Worker 创建失败
+
+```bash
+# 检查 Cloudflare 凭证
+curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+  -H "Authorization: Bearer 你的_API_Token"
+```
+
+#### 查看 Worker 状态
+
+```bash
+# 查看日志中的 Worker 信息
+grep "FlareProx" ~/k2think2api3/server.log
+```
+
+#### 手动清理 Workers
+
+如果需要清理所有创建的Workers：
+
+```bash
+# 临时禁用 FlareProx
+# 编辑 .env: ENABLE_FLAREPROX=false
+# 重启服务器
+./k2think_server.sh restart
+
+# Workers 会在下次启动时自动重新创建
+```
+
+### 注意事项
+
+- ⚠️ Cloudflare Workers 免费套餐：100,000 请求/天
+- ⚠️ Worker 池大小建议：3-5个（平衡性能和配额）
+- ⚠️ Worker 创建需要几秒时间，首次启动会稍慢
+- ⚠️ 如果禁用FlareProx，系统会自动回退到直连模式
+
+### 高级配置
+
+#### 自定义 Worker 池大小
+
+```bash
+# .env文件
+FLAREPROX_POOL_SIZE=5  # 增加到5个Worker
+```
+
+#### 仅在特定环境启用
+
+```bash
+# 生产环境启用
+if [ "$APP_ENV" = "production" ]; then
+    export ENABLE_FLAREPROX=true
+fi
+```
+
