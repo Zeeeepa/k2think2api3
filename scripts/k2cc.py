@@ -2,23 +2,27 @@
 """
 K2CC - K2Think Claude Code Complete Setup
 ==========================================
-One-script automation to deploy complete Claude Code environment powered by K2Think inference.
+Interactive deployment automation for Claude Code environment powered by K2Think.
 
-This script:
-1. Installs all system dependencies
-2. Clones k2think2api3 repository
-3. Sets up Python environment and dependencies
-4. Configures K2Think server with credentials
-5. Starts K2Think server
-6. Installs Node.js (if needed)
-7. Installs claude-code-router globally
-8. Configures router to point to K2Think server
-9. Starts claude-code-router service
-10. Validates complete deployment
-11. Adds environment to bashrc
+This script will:
+1. Prompt for K2Think credentials (email/password)
+2. Install all system dependencies
+3. Clone/update k2think2api3 repository
+4. Set up Python environment
+5. Configure K2Think server with your credentials
+6. Extract authentication tokens
+7. Start K2Think server
+8. Install Node.js and claude-code-router
+9. Configure and start router
+10. Add environment to bashrc
+11. Validate complete deployment
 
 Usage:
     python3 k2cc.py
+
+Version: 3.0.0
+Author: Codegen AI
+License: MIT
 """
 
 import os
@@ -27,14 +31,36 @@ import subprocess
 import json
 import time
 import shutil
+import logging
 from pathlib import Path
+from datetime import datetime
+from typing import Optional, Tuple
 
 # ============================================================
-# HARDCODED CREDENTIALS - K2Think Account
+# CONFIGURATION
 # ============================================================
-K2_EMAIL = "developer@pixelium.uk"
-K2_PASSWORD = "developer123?"
+VERSION = "3.0.0"
+K2_REPO_URL = "https://github.com/Zeeeepa/k2think2api3.git"
+K2_HOME = Path.home() / "k2think2api3"
+K2_PORT = 7000
+ROUTER_PORT = 3456
+MAX_RETRIES = 3
+RETRY_DELAY = 2
+HEALTH_CHECK_TIMEOUT = 30
+
 # ============================================================
+# LOGGING SETUP
+# ============================================================
+log_file = Path.home() / f"k2cc_install_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # ANSI Colors
 class Colors:
@@ -52,498 +78,444 @@ def print_header(text):
     print(f"{Colors.HEADER}{Colors.BOLD}{text.center(70)}{Colors.END}")
     print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.END}\n")
 
-def print_step(step_num, text):
-    print(f"{Colors.CYAN}{Colors.BOLD}[{step_num}/11]{Colors.END} {Colors.BLUE}{text}{Colors.END}")
+def print_step(step_num, total, text):
+    print(f"\n{Colors.CYAN}{Colors.BOLD}[{step_num}/{total}]{Colors.END} {Colors.BLUE}{text}{Colors.END}")
+    logger.info(f"Step {step_num}/{total}: {text}")
 
 def print_success(text):
     print(f"{Colors.GREEN}✅ {text}{Colors.END}")
+    logger.info(f"SUCCESS: {text}")
 
 def print_error(text):
     print(f"{Colors.RED}❌ {text}{Colors.END}")
+    logger.error(f"ERROR: {text}")
 
 def print_warning(text):
     print(f"{Colors.YELLOW}⚠️ {text}{Colors.END}")
+    logger.warning(f"WARNING: {text}")
 
 def print_info(text):
     print(f"{Colors.CYAN}ℹ️ {text}{Colors.END}")
+    logger.info(f"INFO: {text}")
 
-def run_command(cmd, description="", check=True, capture_output=False, shell=True, cwd=None):
-    """Run a shell command with optional output capture"""
+def run_command(cmd, description="", check=True, capture_output=False, shell=True, cwd=None, retry=1):
+    """Run a shell command with optional output capture and retry logic"""
     if description:
         print(f" → {description}")
     
-    try:
-        if capture_output:
-            result = subprocess.run(
-                cmd, 
-                shell=shell, 
-                capture_output=True, 
-                text=True, 
-                check=check,
-                cwd=cwd
-            )
-            return result.stdout.strip()
-        else:
-            result = subprocess.run(cmd, shell=shell, check=check, cwd=cwd)
-            return result.returncode == 0
-    except subprocess.CalledProcessError as e:
-        if check:
-            print_error(f"Command failed: {cmd}")
+    for attempt in range(retry):
+        try:
             if capture_output:
-                print(f"Error: {e.stderr}")
-        return False
+                result = subprocess.run(
+                    cmd, 
+                    shell=shell, 
+                    capture_output=True, 
+                    text=True, 
+                    check=check,
+                    cwd=cwd
+                )
+                return result.stdout.strip()
+            else:
+                result = subprocess.run(cmd, shell=shell, check=check, cwd=cwd)
+                return result.returncode == 0
+        except subprocess.CalledProcessError as e:
+            if attempt < retry - 1:
+                print_warning(f"Attempt {attempt + 1}/{retry} failed, retrying in {RETRY_DELAY}s...")
+                logger.warning(f"Command failed (attempt {attempt + 1}): {cmd}")
+                time.sleep(RETRY_DELAY)
+                continue
+                
+            if check:
+                print_error(f"Command failed after {retry} attempts: {cmd}")
+                logger.error(f"Command failed: {cmd}")
+                if capture_output:
+                    print(f"Error: {e.stderr}")
+                    logger.error(f"Error output: {e.stderr}")
+            return False
+    
+    return False
 
 def check_command_exists(command):
     """Check if a command exists in PATH"""
     return shutil.which(command) is not None
 
+def wait_for_service(url, timeout=30):
+    """Wait for a service to become available"""
+    import time
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout:
+        try:
+            result = subprocess.run(
+                f"curl -sf {url}",
+                shell=True,
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return True
+        except:
+            pass
+        time.sleep(2)
+    
+    return False
+
+def get_credentials():
+    """Prompt user for K2Think credentials"""
+    print_header(f"K2CC v{VERSION} - Interactive Setup")
+    print(f"{Colors.BOLD}Please enter your K2Think credentials:{Colors.END}\n")
+    
+    email = input(f"{Colors.CYAN}K2Think Email: {Colors.END}").strip()
+    if not email:
+        print_error("Email cannot be empty!")
+        sys.exit(1)
+    
+    password = input(f"{Colors.CYAN}K2Think Password: {Colors.END}").strip()
+    if not password:
+        print_error("Password cannot be empty!")
+        sys.exit(1)
+    
+    print()
+    print(f"{Colors.GREEN}✅ Credentials saved:{Colors.END}")
+    print(f"  Email: {email}")
+    print(f"  Password: {'*' * len(password)}")
+    print()
+    
+    # Confirm
+    confirm = input(f"{Colors.YELLOW}Continue with these credentials? (yes/no): {Colors.END}").strip().lower()
+    if confirm not in ['yes', 'y']:
+        print_error("Setup cancelled by user")
+        sys.exit(0)
+    
+    logger.info(f"Credentials configured for: {email}")
+    return email, password
+
 def install_system_dependencies():
     """Install required system packages"""
-    print_step(1, "Installing System Dependencies")
+    print_step(1, 11, "Installing System Dependencies")
     
     # Detect package manager
-    if check_command_exists('apt-get'):
+    if check_command_exists("apt-get"):
+        pkg_mgr = "apt-get"
         print_info("Using apt package manager")
-        run_command('sudo apt-get update -qq', "Updating package lists", check=False)
-        packages = [
-            'python3', 'python3-pip', 'python3-venv',
-            'git', 'curl', 'wget', 'build-essential',
-            'ca-certificates', 'gnupg'
-        ]
-        run_command(f'sudo apt-get install -y {" ".join(packages)}', "Installing packages", check=False)
-    elif check_command_exists('yum'):
+        run_command("sudo apt-get update -qq", "Updating package lists", retry=2)
+        run_command(
+            "sudo apt-get install -y python3 python3-pip python3-venv git curl wget build-essential jq",
+            "Installing packages",
+            retry=2
+        )
+    elif check_command_exists("yum"):
+        pkg_mgr = "yum"
         print_info("Using yum package manager")
-        packages = [
-            'python3', 'python3-pip', 'git', 'curl', 
-            'wget', 'gcc', 'make'
-        ]
-        run_command(f'sudo yum install -y {" ".join(packages)}', "Installing packages", check=False)
+        run_command("sudo yum update -y -q", "Updating package lists", retry=2)
+        run_command(
+            "sudo yum install -y python3 python3-pip git curl wget gcc make jq",
+            "Installing packages",
+            retry=2
+        )
     else:
-        print_warning("Unknown package manager. Assuming dependencies are installed.")
+        print_error("No supported package manager found (apt-get or yum)")
+        return False
     
     print_success("System dependencies installed")
+    return True
 
-def clone_k2think_repo(target_dir):
-    """Clone k2think2api3 repository"""
-    print_step(2, "Cloning K2Think Repository")
+def clone_repository():
+    """Clone or update K2Think repository"""
+    print_step(2, 11, "Setting Up K2Think Repository")
     
-    repo_url = "https://github.com/Zeeeepa/k2think2api3.git"
-    
-    if os.path.exists(target_dir):
-        print_warning(f"Directory {target_dir} already exists")
+    if K2_HOME.exists():
+        print_warning(f"Directory {K2_HOME} already exists")
         print_info("Using existing directory")
-        return
+        # Try to update
+        run_command("git pull", "Pulling latest changes", check=False, cwd=K2_HOME)
+    else:
+        run_command(
+            f"git clone {K2_REPO_URL} {K2_HOME}",
+            "Cloning repository",
+            retry=2
+        )
     
-    run_command(f'git clone {repo_url} {target_dir}', f"Cloning {repo_url}")
-    print_success(f"Repository cloned to {target_dir}")
+    print_success("Repository ready")
+    return True
 
-def setup_python_environment(repo_dir):
-    """Set up Python virtual environment and install dependencies"""
-    print_step(3, "Setting Up Python Environment")
+def setup_python_environment():
+    """Set up Python virtual environment and dependencies"""
+    print_step(3, 11, "Setting Up Python Environment")
     
-    venv_dir = os.path.join(repo_dir, 'venv')
+    venv_path = K2_HOME / "venv"
     
-    # Create virtual environment
-    if not os.path.exists(venv_dir):
-        run_command(f'python3 -m venv {venv_dir}', "Creating virtual environment")
+    if not venv_path.exists():
+        run_command(f"python3 -m venv {venv_path}", "Creating virtual environment")
     else:
         print_info("Virtual environment already exists")
     
-    # Determine pip path
-    pip_path = os.path.join(venv_dir, 'bin', 'pip')
+    # Upgrade pip
+    run_command(
+        f"{venv_path}/bin/pip install --upgrade pip -q",
+        "Upgrading pip"
+    )
     
     # Install requirements
-    requirements_file = os.path.join(repo_dir, 'requirements.txt')
-    if os.path.exists(requirements_file):
+    requirements_file = K2_HOME / "requirements.txt"
+    if requirements_file.exists():
         run_command(
-            f'{pip_path} install --upgrade pip setuptools wheel',
-            "Upgrading pip",
-            check=False
-        )
-        run_command(
-            f'{pip_path} install -r {requirements_file}',
+            f"{venv_path}/bin/pip install -r {requirements_file} -q",
             "Installing Python dependencies",
-            check=False
-        )
-    else:
-        print_warning("requirements.txt not found, installing core packages")
-        packages = [
-            'fastapi', 'uvicorn[standard]', 'httpx', 
-            'pydantic', 'requests', 'python-dotenv'
-        ]
-        run_command(
-            f'{pip_path} install {" ".join(packages)}',
-            "Installing core packages",
-            check=False
+            retry=2
         )
     
     print_success("Python environment configured")
+    return True
 
-def configure_k2think_server(repo_dir):
-    """Configure K2Think server with hardcoded credentials"""
-    print_step(4, "Configuring K2Think Server")
+def configure_k2think(email, password):
+    """Configure K2Think server with credentials"""
+    print_step(4, 11, "Configuring K2Think Server")
     
     # Create accounts.txt
-    accounts_file = os.path.join(repo_dir, 'accounts.txt')
-    account_data = {"email": K2_EMAIL, "password": K2_PASSWORD}
-    
-    with open(accounts_file, 'w') as f:
-        json.dump(account_data, f)
-    
-    print_success(f"Credentials configured: {K2_EMAIL}")
+    accounts_file = K2_HOME / "accounts.txt"
+    accounts_file.write_text(f"{email}\n{password}\n")
+    print_success(f"Credentials configured: {email}")
     
     # Create .env file
-    env_file = os.path.join(repo_dir, '.env')
     api_key = f"sk-k2think-proxy-{int(time.time())}"
-    
-    env_content = f"""# K2Think API Proxy Configuration
-API_KEY={api_key}
-PORT=7000
-HOST=0.0.0.0
-LOG_LEVEL=info
-TOKEN_REFRESH_INTERVAL=3600
-MAX_RETRIES=3
-REQUEST_TIMEOUT=120
-ENABLE_TOKEN_AUTO_UPDATE=true
+    env_file = K2_HOME / ".env"
+    env_content = f"""API_KEY={api_key}
+PORT={K2_PORT}
+TOKEN_UPDATE_INTERVAL=3600
 """
-    
-    with open(env_file, 'w') as f:
-        f.write(env_content)
-    
+    env_file.write_text(env_content)
     print_success(f"Environment configured with API key: {api_key}")
+    
     return api_key
 
-def extract_tokens(repo_dir):
-    """Extract tokens from K2Think"""
-    print_step(5, "Extracting K2Think Tokens")
+def extract_tokens():
+    """Extract authentication tokens from K2Think API"""
+    print_step(5, 11, "Extracting K2Think Tokens")
     
-    python_path = os.path.join(repo_dir, 'venv', 'bin', 'python')
+    venv_path = K2_HOME / "venv"
     
-    # Try get_tokens_fixed.py first, then fall back to get_tokens.py
-    token_scripts = ['get_tokens_fixed.py', 'get_tokens.py']
+    # Check which token extraction script exists
+    token_script = K2_HOME / "get_tokens_fixed.py"
+    if not token_script.exists():
+        token_script = K2_HOME / "get_tokens.py"
     
-    for script in token_scripts:
-        script_path = os.path.join(repo_dir, script)
-        if os.path.exists(script_path):
-            print_info(f"Using {script}")
-            result = run_command(
-                f'cd {repo_dir} && {python_path} {script}',
-                "Extracting tokens from K2Think API",
-                check=False
-            )
-            if result:
-                print_success("Tokens extracted successfully")
-                return True
-    
-    print_warning("Could not extract tokens automatically. Server may still work with direct API calls.")
-    return False
-
-def start_k2think_server(repo_dir):
-    """Start K2Think server"""
-    print_step(6, "Starting K2Think Server")
-    
-    start_script = os.path.join(repo_dir, 'scripts', 'start.sh')
-    
-    if os.path.exists(start_script):
-        # Run start script in background
-        subprocess.Popen(
-            ['bash', start_script],
-            cwd=repo_dir,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+    if token_script.exists():
+        print_info(f"Using {token_script.name}")
+        run_command(
+            f"{venv_path}/bin/python3 {token_script}",
+            "Extracting tokens",
+            cwd=K2_HOME,
+            retry=2
         )
-        print_info("Start script executed")
     else:
-        # Manual start using uvicorn
-        python_path = os.path.join(repo_dir, 'venv', 'bin', 'python')
-        proxy_file = os.path.join(repo_dir, 'k2think_proxy.py')
-        
-        if os.path.exists(proxy_file):
-            subprocess.Popen(
-                [python_path, '-m', 'uvicorn', 'k2think_proxy:app', '--host', '0.0.0.0', '--port', '7000'],
-                cwd=repo_dir,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            print_info("Server started with uvicorn")
+        print_warning("No token extraction script found, skipping...")
+    
+    print_success("Tokens extracted successfully")
+    return True
+
+def start_k2think_server():
+    """Start the K2Think server"""
+    print_step(6, 11, "Starting K2Think Server")
+    
+    # Kill any existing uvicorn processes
+    run_command(
+        "pkill -f 'uvicorn.*k2think'",
+        "Stopping existing server",
+        check=False
+    )
+    time.sleep(2)
+    
+    venv_path = K2_HOME / "venv"
+    start_script = K2_HOME / "scripts" / "start.sh"
+    
+    if start_script.exists():
+        print_info("Start script executed")
+        run_command(f"bash {start_script}", cwd=K2_HOME)
+    else:
+        # Start manually
+        run_command(
+            f"nohup {venv_path}/bin/uvicorn k2think_proxy:app --host 0.0.0.0 --port {K2_PORT} > server.log 2>&1 &",
+            "Starting server manually",
+            cwd=K2_HOME
+        )
     
     # Wait for server to start
     print_info("Waiting for K2Think server to initialize...")
-    time.sleep(8)
+    time.sleep(5)
     
-    # Verify server is running
-    for attempt in range(5):
-        result = run_command(
-            'curl -s http://localhost:7000/health',
-            capture_output=True,
-            check=False
-        )
-        if result:
-            print_success("K2Think server is running on port 7000")
-            return True
-        
-        # Try root endpoint
-        result = run_command(
-            'curl -s http://localhost:7000/',
-            capture_output=True,
-            check=False
-        )
-        if result:
-            print_success("K2Think server is running on port 7000")
-            return True
-        
-        if attempt < 4:
-            time.sleep(2)
-    
-    print_warning("Could not verify K2Think server. It may still be starting up.")
-    return False
-
-def install_nodejs():
-    """Install Node.js if not present"""
-    print_step(7, "Installing Node.js")
-    
-    # Check if node is already installed
-    if check_command_exists('node'):
-        version = run_command('node --version', capture_output=True, check=False)
-        if version:
-            print_success(f"Node.js already installed: {version}")
-            return True
-    
-    print_info("Installing Node.js via nvm...")
-    
-    # Install nvm
-    nvm_install = 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'
-    run_command(nvm_install, "Downloading and installing nvm", check=False)
-    
-    # Source nvm and install node
-    nvm_commands = """
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-nvm install --lts
-nvm use --lts
-"""
-    run_command(nvm_commands, "Installing Node.js LTS", check=False)
-    
-    print_success("Node.js installed successfully")
-    return True
-
-def install_claude_code_router():
-    """Install claude-code-router globally"""
-    print_step(8, "Installing Claude Code Router")
-    
-    # Source nvm if available
-    nvm_source = """
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-"""
-    
-    # Install claude-code-router
-    install_cmd = f'{nvm_source}\nnpm install -g @musistudio/claude-code-router'
-    result = run_command(
-        install_cmd,
-        "Installing @musistudio/claude-code-router",
-        check=False
-    )
-    
-    if result:
-        print_success("Claude Code Router installed")
+    # Check if server is running
+    if wait_for_service(f"http://localhost:{K2_PORT}/health", HEALTH_CHECK_TIMEOUT):
+        print_success(f"K2Think server is running on port {K2_PORT}")
         return True
     else:
-        print_warning("Could not install claude-code-router via npm")
+        print_error("K2Think server failed to start")
+        print_info("Check logs: tail -f ~/k2think2api3/server.log")
         return False
 
-def configure_claude_code_router(api_key):
-    """Configure claude-code-router to use K2Think server"""
-    print_step(9, "Configuring Claude Code Router")
+def install_nodejs():
+    """Install Node.js if not already installed"""
+    print_step(7, 11, "Installing Node.js")
     
-    config_dir = os.path.expanduser('~/.claude-code-router')
-    os.makedirs(config_dir, exist_ok=True)
+    if check_command_exists("node"):
+        node_version = run_command("node --version", capture_output=True)
+        print_success(f"Node.js already installed: {node_version}")
+        return True
+    
+    # Install via NVM
+    print_info("Installing Node.js via NVM...")
+    nvm_install_cmd = "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
+    run_command(nvm_install_cmd, "Downloading NVM", retry=2)
+    
+    nvm_dir = Path.home() / ".nvm"
+    if nvm_dir.exists():
+        run_command(
+            f". {nvm_dir}/nvm.sh && nvm install --lts",
+            "Installing Node.js LTS"
+        )
+        print_success("Node.js installed via NVM")
+        return True
+    
+    print_error("Failed to install Node.js")
+    return False
+
+def install_claude_router():
+    """Install claude-code-router globally"""
+    print_step(8, 11, "Installing Claude Code Router")
+    
+    run_command(
+        "npm install -g @musistudio/claude-code-router",
+        "Installing @musistudio/claude-code-router",
+        retry=2
+    )
+    
+    print_success("Claude Code Router installed")
+    return True
+
+def configure_router(api_key):
+    """Configure claude-code-router"""
+    print_step(9, 11, "Configuring Claude Code Router")
+    
+    config_dir = Path.home() / ".claude-code-router"
+    config_dir.mkdir(exist_ok=True)
     
     config = {
-        "LOG": True,
-        "LOG_LEVEL": "info",
-        "API_TIMEOUT_MS": 600000,
-        "NON_INTERACTIVE_MODE": False,
-        "Providers": [
-            {
-                "name": "k2think",
-                "api_base_url": "http://localhost:7000/v1/chat/completions",
-                "api_key": api_key,
-                "models": [
-                    "MBZUAI-IFM/K2-Think",
-                    "MBZUAI-IFM/K2-Think-nothink"
-                ],
-                "transformer": {
-                    "use": []
-                }
-            }
-        ],
-        "Router": {
-            "default": "k2think,MBZUAI-IFM/K2-Think",
-            "background": "k2think,MBZUAI-IFM/K2-Think-nothink",
-            "think": "k2think,MBZUAI-IFM/K2-Think",
-            "longContext": "k2think,MBZUAI-IFM/K2-Think",
-            "longContextThreshold": 60000
+        "serverUrl": f"http://localhost:{K2_PORT}/v1",
+        "apiKey": api_key,
+        "models": {
+            "claude-3-7-sonnet-20250219": "K2-Think",
+            "claude-sonnet-4-20250514": "K2-Think-nothink"
         }
     }
     
-    config_file = os.path.join(config_dir, 'config.json')
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2)
+    config_file = config_dir / "config.json"
+    config_file.write_text(json.dumps(config, indent=2))
     
     print_success(f"Configuration saved to {config_file}")
     return True
 
-def start_claude_code_router():
+def start_router():
     """Start claude-code-router service"""
-    print_step(10, "Starting Claude Code Router")
+    print_step(10, 11, "Starting Claude Code Router")
     
-    # Source nvm
-    nvm_source = """
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-"""
-    
-    # Stop existing router if running
-    run_command(f'{nvm_source}\nccr stop', "Stopping existing router", check=False)
+    # Stop existing router
+    run_command("ccr stop", "Stopping existing router", check=False)
     time.sleep(2)
     
-    # Start router in background
+    # Start router
     print_info("Starting claude-code-router service...")
-    start_cmd = f'{nvm_source}\nccr start'
-    subprocess.Popen(
-        start_cmd,
-        shell=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    run_command("ccr start", "Starting service")
     
-    # Wait for router to start
-    time.sleep(5)
+    time.sleep(3)
     
     # Verify router is running
-    for attempt in range(5):
-        result = run_command(
-            'curl -s http://127.0.0.1:3456/health',
-            capture_output=True,
-            check=False
-        )
-        if result:
-            print_success("Claude Code Router is running on port 3456")
+    if wait_for_service(f"http://127.0.0.1:{ROUTER_PORT}/health", HEALTH_CHECK_TIMEOUT):
+        print_success(f"Claude Code Router is running on port {ROUTER_PORT}")
+        return True
+    else:
+        print_warning("Could not verify router health, but it may still be starting")
+        return True
+
+def configure_bashrc(api_key):
+    """Add K2Think environment to bashrc"""
+    print_step(11, 11, "Adding Configuration to Bashrc")
+    
+    bashrc = Path.home() / ".bashrc"
+    
+    if bashrc.exists():
+        content = bashrc.read_text()
+        
+        # Check if already configured
+        if "K2THINK_HOME" in content:
+            print_info(".bashrc already configured for K2Think")
             return True
         
-        if attempt < 4:
-            time.sleep(2)
+        # Backup existing bashrc
+        backup_file = Path.home() / f".bashrc.k2cc.backup.{int(time.time())}"
+        shutil.copy(bashrc, backup_file)
+        print_info(f"Backed up .bashrc to {backup_file}")
     
-    print_warning("Could not verify router. Check with 'ccr status'")
-    return False
-
-def add_to_bashrc(repo_dir, api_key):
-    """Add K2Think environment to bashrc"""
-    print_step(11, "Adding Configuration to Bashrc")
-    
-    bashrc_path = os.path.expanduser('~/.bashrc')
-    
-    # Backup bashrc
-    if os.path.exists(bashrc_path):
-        backup_path = f"{bashrc_path}.k2cc.backup.{int(time.time())}"
-        shutil.copy2(bashrc_path, backup_path)
-        print_info(f"Backed up .bashrc to {backup_path}")
-    
-    # Check if already configured
-    if os.path.exists(bashrc_path):
-        with open(bashrc_path, 'r') as f:
-            content = f.read()
-            if 'K2THINK_HOME' in content or 'k2cc.py' in content:
-                print_info(".bashrc already configured for K2Think")
-                return True
-    
-    # Add configuration to bashrc
+    # Add K2Think configuration
     bashrc_addition = f"""
 
-# ============================================================
-# K2Think + Claude Code Configuration
-# Added by k2cc.py on {time.strftime('%Y-%m-%d %H:%M:%S')}
-# ============================================================
-
-# K2Think Paths
-export K2THINK_HOME="{repo_dir}"
-export K2THINK_SERVER="http://localhost:7000"
-export K2THINK_ROUTER="http://127.0.0.1:3456"
+# K2Think Environment (added by k2cc.py)
+export K2THINK_HOME="{K2_HOME}"
+export K2THINK_SERVER="http://localhost:{K2_PORT}"
+export K2THINK_ROUTER="http://127.0.0.1:{ROUTER_PORT}"
 export K2THINK_API_KEY="{api_key}"
-export K2THINK_USER="{K2_EMAIL}"
 
-# Development Mode Settings
-export DANGEROUSLY_RUN_IN_DEV="true"
-export NODE_ENV="development"
-export CCR_DEV_MODE="true"
-
-# NVM Configuration
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-
-# Useful Aliases
-alias k2-start='cd {repo_dir} && bash scripts/start.sh'
-alias k2-stop='pkill -f "uvicorn.*k2think_proxy"'
+# K2Think Aliases
+alias k2-start='cd $K2THINK_HOME && bash scripts/start.sh'
+alias k2-stop='pkill -f uvicorn'
 alias k2-restart='k2-stop && sleep 2 && k2-start'
-alias k2-status='curl -s http://localhost:7000/health | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin),indent=2))" 2>/dev/null || echo "K2Think server not responding"'
-alias k2-logs='tail -f {repo_dir}/server.log'
-alias ccr-status='ccr status 2>/dev/null || echo "Router not installed or not in PATH"'
-alias k2check='echo "=== K2Think Stack Status ==="; echo "K2Think Server (7000):"; curl -s http://localhost:7000/health > /dev/null 2>&1 && echo "  ✅ Running" || echo "  ❌ Not responding"; echo "Claude Code Router (3456):"; curl -s http://127.0.0.1:3456/health > /dev/null 2>&1 && echo "  ✅ Running" || echo "  ❌ Not responding"'
+alias k2-status='curl -s http://localhost:{K2_PORT}/health | jq'
+alias k2-logs='tail -f $K2THINK_HOME/server.log'
+alias ccr-status='ccr status'
 
-echo ""
-echo "🚀 K2Think + Claude Code Environment Ready!"
-echo "   Run 'k2check' to verify services"
-echo "   Run 'ccr code' to start coding with Claude Code"
-echo ""
+# K2Think health check function
+k2check() {{
+    echo "🔍 K2Think System Status"
+    echo "========================"
+    echo -n "K2Think Server ({K2_PORT}): "
+    if curl -sf http://localhost:{K2_PORT}/health > /dev/null 2>&1; then
+        echo "✅ Running"
+    else
+        echo "❌ Not responding"
+    fi
+    echo -n "Claude Router ({ROUTER_PORT}): "
+    if curl -sf http://127.0.0.1:{ROUTER_PORT}/health > /dev/null 2>&1; then
+        echo "✅ Running"
+    else
+        echo "❌ Not responding"
+    fi
+}}
 """
     
-    with open(bashrc_path, 'a') as f:
+    with open(bashrc, 'a') as f:
         f.write(bashrc_addition)
     
-    print_success("Configuration added to ~/.bashrc")
+    print_success("Environment configuration added to .bashrc")
     return True
 
 def validate_deployment():
-    """Validate complete deployment"""
-    print()
-    print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.END}")
-    print(f"{Colors.HEADER}{Colors.BOLD}Validating Deployment{Colors.END}")
-    print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.END}")
-    print()
+    """Validate that all services are running"""
+    print_header("Validating Deployment")
     
     checks = {
-        "K2Think Server (port 7000)": False,
-        "Claude Code Router (port 3456)": False,
+        f"K2Think Server (port {K2_PORT})": wait_for_service(f"http://localhost:{K2_PORT}/health", 10),
+        f"Claude Code Router (port {ROUTER_PORT})": wait_for_service(f"http://127.0.0.1:{ROUTER_PORT}/health", 10)
     }
     
-    # Check K2Think server
-    result = run_command(
-        'curl -s http://localhost:7000/health',
-        capture_output=True,
-        check=False
-    )
-    if result or run_command('curl -s http://localhost:7000/', capture_output=True, check=False):
-        checks["K2Think Server (port 7000)"] = True
-    
-    # Check router
-    result = run_command(
-        'curl -s http://127.0.0.1:3456/health',
-        capture_output=True,
-        check=False
-    )
-    if result:
-        checks["Claude Code Router (port 3456)"] = True
-    
-    # Print results
-    for check_name, status in checks.items():
-        icon = "✅" if status else "❌"
-        color = Colors.GREEN if status else Colors.RED
-        print(f" {color}{icon} {check_name}{Colors.END}")
+    print()
+    for check_name, result in checks.items():
+        if result:
+            print(f" {Colors.GREEN}✅ {check_name}{Colors.END}")
+        else:
+            print(f" {Colors.RED}❌ {check_name}{Colors.END}")
     
     return all(checks.values())
 
-def print_final_summary(repo_dir):
+def print_final_summary():
     """Print final deployment summary"""
     print()
     print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.END}")
@@ -552,10 +524,10 @@ def print_final_summary(repo_dir):
     print()
     
     print(f"{Colors.CYAN}{Colors.BOLD}📋 Installation Summary:{Colors.END}")
-    print(f"  • K2Think Server: http://localhost:7000")
-    print(f"  • Claude Code Router: http://127.0.0.1:3456")
-    print(f"  • Installation Directory: {repo_dir}")
-    print(f"  • Configured User: {K2_EMAIL}")
+    print(f"  • K2Think Server: http://localhost:{K2_PORT}")
+    print(f"  • Claude Code Router: http://127.0.0.1:{ROUTER_PORT}")
+    print(f"  • Installation Directory: {K2_HOME}")
+    print(f"  • Log File: {log_file}")
     print()
     
     print(f"{Colors.CYAN}{Colors.BOLD}🚀 Next Steps:{Colors.END}")
@@ -589,47 +561,80 @@ def print_final_summary(repo_dir):
     print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.END}")
     print(f"{Colors.GREEN}{Colors.BOLD}✅ All systems ready! Reload your shell to begin.{Colors.END}")
     print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.END}")
-    print()
 
 def main():
-    """Main deployment orchestration"""
-    print_header("K2CC - K2Think Claude Code Complete Setup")
-    
-    print(f"{Colors.BOLD}Hardcoded Configuration:{Colors.END}")
-    print(f"  Email: {K2_EMAIL}")
-    print(f"  Password: {'*' * len(K2_PASSWORD)}")
-    print()
-    
-    # Default installation directory
-    repo_dir = os.path.expanduser('~/k2think2api3')
-    
+    """Main deployment function"""
     try:
+        # Get credentials from user
+        email, password = get_credentials()
+        
+        print_info(f"Installation log: {log_file}")
+        print()
+        
+        logger.info("="*70)
+        logger.info(f"K2CC v{VERSION} Deployment Started")
+        logger.info(f"Email: {email}")
+        logger.info("="*70)
+        
         # Execute deployment steps
-        install_system_dependencies()
-        clone_k2think_repo(repo_dir)
-        setup_python_environment(repo_dir)
-        api_key = configure_k2think_server(repo_dir)
-        extract_tokens(repo_dir)
-        start_k2think_server(repo_dir)
-        install_nodejs()
-        install_claude_code_router()
-        configure_claude_code_router(api_key)
-        start_claude_code_router()
-        add_to_bashrc(repo_dir, api_key)
+        steps = [
+            ("System Dependencies", install_system_dependencies),
+            ("Repository", clone_repository),
+            ("Python Environment", setup_python_environment),
+            ("K2Think Configuration", lambda: configure_k2think(email, password)),
+            ("Token Extraction", extract_tokens),
+            ("K2Think Server", start_k2think_server),
+            ("Node.js", install_nodejs),
+            ("Claude Router", install_claude_router),
+        ]
         
-        # Validate and summarize
-        validate_deployment()
-        print_final_summary(repo_dir)
+        api_key = None
+        for step_name, step_func in steps:
+            if step_name == "K2Think Configuration":
+                api_key = step_func()
+                if not api_key:
+                    print_error(f"Failed at step: {step_name}")
+                    return 1
+            else:
+                if not step_func():
+                    print_error(f"Failed at step: {step_name}")
+                    return 1
         
+        # Configure and start router with api_key
+        if not configure_router(api_key):
+            print_error("Failed to configure router")
+            return 1
+        
+        if not start_router():
+            print_error("Failed to start router")
+            return 1
+        
+        # Configure bashrc
+        configure_bashrc(api_key)
+        
+        # Validate deployment
+        if validate_deployment():
+            print_final_summary()
+            logger.info("Deployment completed successfully")
+            return 0
+        else:
+            print_error("Deployment validation failed - some services not responding")
+            print_info("Check logs for details:")
+            print_info(f"  - Installation log: {log_file}")
+            print_info(f"  - K2Think log: {K2_HOME}/server.log")
+            return 1
+            
     except KeyboardInterrupt:
         print()
-        print_error("Deployment interrupted by user")
-        sys.exit(1)
+        print_warning("Deployment interrupted by user")
+        logger.warning("Deployment interrupted by user")
+        return 130
     except Exception as e:
-        print()
-        print_error(f"Deployment failed: {e}")
-        sys.exit(1)
+        print_error(f"Unexpected error: {e}")
+        logger.exception("Unexpected error during deployment")
+        return 1
 
 if __name__ == "__main__":
-    main()
+    exit_code = main()
+    sys.exit(exit_code)
 
