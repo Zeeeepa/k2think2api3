@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-K2Think API Proxy - Docker Deployment Script
-============================================
-Automated Docker deployment with intelligent port management,
+K2Think API Proxy - Local Deployment Script
+==========================================
+Automated local deployment with intelligent port management,
 credential setup, and token extraction.
 
 Features:
@@ -11,7 +11,7 @@ Features:
 - Automatic .env generation from .env.example
 - Token auto-fetch via get_tokens.py
 - Smart port conflict resolution
-- Docker container build and deployment
+- Local Python server start
 - OpenAI-compatible API endpoint
 - Enforces K2-Think model and retrieved tokens
 - Always uses thinking version
@@ -22,7 +22,7 @@ import sys
 import json
 import socket
 import subprocess
-import shutil
+import signal
 import time
 from pathlib import Path
 from typing import Optional, Tuple
@@ -66,49 +66,40 @@ def print_info(message: str):
     """Print info message"""
     print(f"{Colors.OKBLUE}ℹ {message}{Colors.ENDC}")
 
-def get_compose_command() -> list:
-    """Determine which docker compose command to use"""
-    # Try docker compose v2 first
-    try:
-        result = subprocess.run(['docker', 'compose', 'version'], 
-                              capture_output=True, check=True, text=True)
-        return ['docker', 'compose']
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Fall back to docker-compose v1
-        try:
-            subprocess.run(['docker-compose', '--version'], 
-                          capture_output=True, check=True)
-            return ['docker-compose']
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return None
-
-def check_docker_installed() -> bool:
-    """Check if Docker and Docker Compose are installed"""
-    try:
-        # Check Docker
-        result = subprocess.run(['docker', '--version'], 
-                              capture_output=True, check=True, text=True)
-        print_success(f"Docker found: {result.stdout.strip()}")
-        
-        # Check Docker Compose
-        compose_cmd = get_compose_command()
-        if compose_cmd is None:
-            print_error("Docker Compose not found")
-            return False
-        
-        result = subprocess.run(compose_cmd + ['version'], 
-                              capture_output=True, check=True, text=True)
-        print_success(f"Docker Compose found: {result.stdout.strip()}")
+def check_python_version() -> bool:
+    """Check if Python version is 3.8+"""
+    version = sys.version_info
+    if version.major >= 3 and version.minor >= 8:
+        print_success(f"Python {version.major}.{version.minor}.{version.micro} detected")
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print_error(f"Docker or Docker Compose not found: {e}")
+    else:
+        print_error(f"Python 3.8+ required, found {version.major}.{version.minor}.{version.micro}")
         return False
+
+def check_dependencies() -> bool:
+    """Check if required Python packages are installed"""
+    required_packages = ['fastapi', 'uvicorn', 'httpx', 'python-dotenv']
+    missing_packages = []
+    
+    for package in required_packages:
+        try:
+            __import__(package.replace('-', '_'))
+        except ImportError:
+            missing_packages.append(package)
+    
+    if missing_packages:
+        print_error(f"Missing required packages: {', '.join(missing_packages)}")
+        print_info("Install them with: pip install -r requirements.txt")
+        return False
+    
+    print_success("All required packages are installed")
+    return True
 
 def is_port_in_use(port: int) -> bool:
     """Check if a port is already in use"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.bind(('0.0.0.0', port))
+            s.bind(('127.0.0.1', port))
             return False
         except OSError:
             return True
@@ -159,12 +150,14 @@ def create_env_from_example(target_port: int) -> bool:
         with open(env_example_path, 'r', encoding='utf-8') as f:
             env_content = f.read()
         
-        # Update PORT in the content
+        # Update PORT and HOST in the content
         lines = env_content.split('\n')
         updated_lines = []
         for line in lines:
             if line.startswith('PORT='):
                 updated_lines.append(f'PORT={target_port}')
+            elif line.startswith('HOST='):
+                updated_lines.append('HOST=127.0.0.1')
             else:
                 updated_lines.append(line)
         
@@ -172,7 +165,7 @@ def create_env_from_example(target_port: int) -> bool:
         with open(env_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(updated_lines))
         
-        print_success(f"Created .env file (PORT={target_port})")
+        print_success(f"Created .env file (PORT={target_port}, HOST=127.0.0.1)")
         return True
     except Exception as e:
         print_error(f"Failed to create .env file: {e}")
@@ -236,83 +229,46 @@ def fetch_token() -> bool:
         print_error(f"Error fetching token: {e}")
         return False
 
-def build_docker_image() -> bool:
-    """Build Docker image locally"""
+def start_local_server(port: int) -> Optional[subprocess.Popen]:
+    """Start the local Python server"""
     try:
-        print_info("Building Docker image (this may take a few minutes)...")
+        print_info("Starting K2Think API Proxy server...")
         
-        compose_cmd = get_compose_command()
-        if compose_cmd is None:
-            print_error("Docker Compose command not available")
-            return False
+        # Check if k2think_proxy.py exists
+        if not Path('k2think_proxy.py').exists():
+            print_error("k2think_proxy.py not found")
+            return None
         
-        # Build using docker compose
-        result = subprocess.run(
-            compose_cmd + ['build', '--no-cache'],
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            print_success("Docker image built successfully")
-            return True
-        else:
-            print_error(f"Failed to build Docker image:\n{result.stderr}")
-            return False
-    except Exception as e:
-        print_error(f"Error building Docker image: {e}")
-        return False
-
-def start_docker_container(port: int) -> bool:
-    """Start Docker container with docker-compose"""
-    try:
-        print_info("Starting Docker container...")
-        
-        compose_cmd = get_compose_command()
-        if compose_cmd is None:
-            print_error("Docker Compose command not available")
-            return False
-        
-        # Set environment variable for port
-        env = os.environ.copy()
-        env['HOST_PORT'] = str(port)
-        
-        # Stop any existing containers
-        subprocess.run(
-            compose_cmd + ['down'],
-            capture_output=True,
-            env=env
-        )
-        
-        # Start container
-        result = subprocess.run(
-            compose_cmd + ['up', '-d'],
-            capture_output=True,
+        # Start server process
+        process = subprocess.Popen(
+            [sys.executable, 'k2think_proxy.py'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            env=env
+            bufsize=1
         )
         
-        if result.returncode == 0:
-            print_success("Docker container started successfully")
-            
-            # Wait for service to be ready
-            print_info("Waiting for service to be ready...")
-            time.sleep(5)
-            
-            return True
+        # Wait a bit for server to start
+        time.sleep(3)
+        
+        # Check if process is still running
+        if process.poll() is None:
+            print_success("Server started successfully")
+            return process
         else:
-            print_error(f"Failed to start container:\n{result.stderr}")
-            return False
+            stdout, stderr = process.communicate()
+            print_error(f"Server failed to start:\n{stderr}")
+            return None
     except Exception as e:
-        print_error(f"Error starting container: {e}")
-        return False
+        print_error(f"Error starting server: {e}")
+        return None
 
-def verify_deployment(port: int) -> bool:
-    """Verify that the deployment is working"""
+def verify_server(port: int) -> bool:
+    """Verify that the server is responding"""
     try:
         import requests
         
-        print_info("Verifying deployment...")
+        print_info("Verifying server is responding...")
         
         # Try to connect to health endpoint
         url = f"http://127.0.0.1:{port}/health"
@@ -321,14 +277,14 @@ def verify_deployment(port: int) -> bool:
             try:
                 response = requests.get(url, timeout=5)
                 if response.status_code == 200:
-                    print_success("Service is healthy and responding")
+                    print_success("Server is healthy and responding")
                     return True
             except requests.exceptions.RequestException:
                 if attempt < 2:
-                    print_warning(f"Waiting for service... (attempt {attempt + 1}/3)")
-                    time.sleep(5)
+                    print_warning(f"Waiting for server... (attempt {attempt + 1}/3)")
+                    time.sleep(3)
         
-        print_warning("Could not verify service health, but container is running")
+        print_warning("Could not verify server health, but process is running")
         return True
     except ImportError:
         print_warning("requests library not installed, skipping health check")
@@ -339,9 +295,9 @@ def verify_deployment(port: int) -> bool:
 
 def print_final_info(port: int):
     """Print final deployment information"""
-    print_header("Deployment Complete!")
+    print_header("Local Deployment Complete!")
     
-    print(f"{Colors.OKGREEN}{Colors.BOLD}K2Think API Proxy is now running!{Colors.ENDC}\n")
+    print(f"{Colors.OKGREEN}{Colors.BOLD}K2Think API Proxy is now running locally!{Colors.ENDC}\n")
     
     print(f"{Colors.BOLD}OpenAI-Compatible API Endpoint:{Colors.ENDC}")
     print(f"  {Colors.OKCYAN}http://127.0.0.1:{port}/v1/chat/completions{Colors.ENDC}\n")
@@ -369,29 +325,29 @@ def print_final_info(port: int):
     print(f"  • Retrieved token from K2Think API (regardless of Authorization header)")
     print(f"  • Thinking mode enabled (reasoning visible in responses)\n")
     
-    compose_cmd_str = ' '.join(get_compose_command())
-    print(f"{Colors.BOLD}Management Commands:{Colors.ENDC}")
-    print(f"  {Colors.OKBLUE}View logs:{Colors.ENDC}       {compose_cmd_str} logs -f")
-    print(f"  {Colors.OKBLUE}Stop service:{Colors.ENDC}    {compose_cmd_str} down")
-    print(f"  {Colors.OKBLUE}Restart service:{Colors.ENDC} {compose_cmd_str} restart")
-    print(f"  {Colors.OKBLUE}Check status:{Colors.ENDC}    {compose_cmd_str} ps\n")
+    print(f"{Colors.BOLD}Server Control:{Colors.ENDC}")
+    print(f"  {Colors.OKBLUE}Press Ctrl+C to stop the server{Colors.ENDC}\n")
 
 def main():
     """Main deployment function"""
-    print_header("K2Think API Proxy - Docker Deployment")
+    print_header("K2Think API Proxy - Local Deployment")
     
-    total_steps = 8
+    total_steps = 7
     current_step = 0
     
-    # Step 1: Check Docker
+    # Step 1: Check Python version
     current_step += 1
-    print_step(current_step, total_steps, "Checking Docker installation")
-    if not check_docker_installed():
-        print_error("Docker or Docker Compose is not installed")
-        print_info("Please install Docker and Docker Compose before running this script")
+    print_step(current_step, total_steps, "Checking Python version")
+    if not check_python_version():
         return 1
     
-    # Step 2: Find available port
+    # Step 2: Check dependencies
+    current_step += 1
+    print_step(current_step, total_steps, "Checking dependencies")
+    if not check_dependencies():
+        return 1
+    
+    # Step 3: Find available port
     current_step += 1
     print_step(current_step, total_steps, "Finding available port")
     default_port = 8001
@@ -406,21 +362,19 @@ def main():
         target_port = default_port
         print_success(f"Using default port: {target_port}")
     
-    # Step 3: Create .env from template
+    # Step 4: Create .env from template
     current_step += 1
     print_step(current_step, total_steps, "Creating .env configuration")
     if not create_env_from_example(target_port):
         print_error("Failed to create .env file")
         return 1
     
-    # Step 4: Collect credentials
+    # Step 5: Collect credentials
     current_step += 1
     print_step(current_step, total_steps, "Collecting K2Think credentials")
     email, password = collect_credentials()
     
-    # Step 5: Save credentials
-    current_step += 1
-    print_step(current_step, total_steps, "Saving credentials to accounts.txt")
+    # Save credentials
     if not save_accounts(email, password):
         print_error("Failed to save credentials")
         return 1
@@ -432,25 +386,38 @@ def main():
         print_error("Failed to fetch token")
         return 1
     
-    # Step 7: Build Docker image
+    # Step 7: Start server
     current_step += 1
-    print_step(current_step, total_steps, "Building Docker image")
-    if not build_docker_image():
-        print_error("Failed to build Docker image")
+    print_step(current_step, total_steps, "Starting local server")
+    server_process = start_local_server(target_port)
+    if server_process is None:
+        print_error("Failed to start server")
         return 1
     
-    # Step 8: Start container
-    current_step += 1
-    print_step(current_step, total_steps, "Starting Docker container")
-    if not start_docker_container(target_port):
-        print_error("Failed to start Docker container")
-        return 1
-    
-    # Verify deployment
-    verify_deployment(target_port)
+    # Verify server
+    verify_server(target_port)
     
     # Print final information
     print_final_info(target_port)
+    
+    # Keep server running and handle Ctrl+C
+    try:
+        print_info("Server is running. Logs will appear below:")
+        print(f"{Colors.OKBLUE}{'='*70}{Colors.ENDC}\n")
+        
+        # Stream server output
+        for line in server_process.stdout:
+            print(line, end='')
+        
+        server_process.wait()
+    except KeyboardInterrupt:
+        print(f"\n\n{Colors.WARNING}Shutting down server...{Colors.ENDC}")
+        server_process.terminate()
+        try:
+            server_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server_process.kill()
+        print_success("Server stopped")
     
     return 0
 
