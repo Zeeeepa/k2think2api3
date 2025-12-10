@@ -64,12 +64,26 @@ def print_info(message: str):
     """Print info message"""
     print(f"{Colors.OKBLUE}ℹ {message}{Colors.ENDC}")
 
+def get_compose_command() -> list:
+    """Determine which docker compose command to use"""
+    # Try docker-compose first (v1)
+    try:
+        subprocess.run(['docker-compose', '--version'], 
+                      capture_output=True, check=True)
+        return ['docker-compose']
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Fall back to docker compose (v2)
+        return ['docker', 'compose']
+
 def check_docker_installed() -> bool:
     """Check if Docker and Docker Compose are installed"""
     try:
         subprocess.run(['docker', '--version'], 
                       capture_output=True, check=True)
-        subprocess.run(['docker-compose', '--version'], 
+        
+        # Try to get compose command
+        compose_cmd = get_compose_command()
+        subprocess.run(compose_cmd + ['version'], 
                       capture_output=True, check=True)
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -228,8 +242,9 @@ def update_docker_compose_port(port: int) -> bool:
 def stop_existing_container() -> bool:
     """Stop and remove existing k2think-api container"""
     try:
+        compose_cmd = get_compose_command()
         result = subprocess.run(
-            ['docker-compose', 'down'],
+            compose_cmd + ['down'],
             capture_output=True,
             text=True
         )
@@ -245,8 +260,9 @@ def build_docker_image() -> bool:
     try:
         print_info("Building Docker image (this may take a few minutes)...")
         
+        compose_cmd = get_compose_command()
         result = subprocess.run(
-            ['docker-compose', 'build', '--no-cache'],
+            compose_cmd + ['build', '--no-cache'],
             capture_output=False,  # Show output
             text=True
         )
@@ -267,8 +283,9 @@ def start_docker_container(port: int) -> bool:
     try:
         print_info("Starting Docker container...")
         
+        compose_cmd = get_compose_command()
         result = subprocess.run(
-            ['docker-compose', 'up', '-d'],
+            compose_cmd + ['up', '-d'],
             capture_output=True,
             text=True
         )
@@ -282,7 +299,7 @@ def start_docker_container(port: int) -> bool:
             
             # Check container status
             status_result = subprocess.run(
-                ['docker-compose', 'ps'],
+                compose_cmd + ['ps'],
                 capture_output=True,
                 text=True
             )
@@ -374,10 +391,10 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content){Colors.ENDC}
 
 {Colors.BOLD}📊 Container Management:{Colors.ENDC}
-   View logs: {Colors.OKCYAN}docker-compose logs -f{Colors.ENDC}
-   Stop: {Colors.OKCYAN}docker-compose stop{Colors.ENDC}
-   Restart: {Colors.OKCYAN}docker-compose restart{Colors.ENDC}
-   Remove: {Colors.OKCYAN}docker-compose down{Colors.ENDC}
+   View logs: {Colors.OKCYAN}docker compose logs -f{Colors.ENDC}
+   Stop: {Colors.OKCYAN}docker compose stop{Colors.ENDC}
+   Restart: {Colors.OKCYAN}docker compose restart{Colors.ENDC}
+   Remove: {Colors.OKCYAN}docker compose down{Colors.ENDC}
 
 {Colors.BOLD}🔧 Token Management:{Colors.ENDC}
    Tokens are automatically refreshed every hour.
@@ -491,4 +508,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
