@@ -136,8 +136,8 @@ def collect_credentials() -> Tuple[str, str]:
     
     return email, password
 
-def create_env_from_example(target_port: int) -> bool:
-    """Create .env file from .env.example"""
+def create_env_from_example(target_port: int, email: str = None, password: str = None) -> bool:
+    """Create .env file from .env.example with specified port and optional credentials"""
     try:
         env_example_path = Path('.env.example')
         env_path = Path('.env')
@@ -160,6 +160,13 @@ def create_env_from_example(target_port: int) -> bool:
                 updated_lines.append('HOST=127.0.0.1')
             else:
                 updated_lines.append(line)
+        
+        # Add K2Think credentials if provided (for reference, not used by proxy)
+        if email and password:
+            updated_lines.append('')
+            updated_lines.append('# K2Think credentials (automatically added)')
+            updated_lines.append(f'# K2THINK_EMAIL={email}')
+            updated_lines.append(f'# K2THINK_PASSWORD=<hidden>')
         
         # Write to .env
         with open(env_path, 'w', encoding='utf-8') as f:
@@ -362,17 +369,17 @@ def main():
         target_port = default_port
         print_success(f"Using default port: {target_port}")
     
-    # Step 4: Create .env from template
-    current_step += 1
-    print_step(current_step, total_steps, "Creating .env configuration")
-    if not create_env_from_example(target_port):
-        print_error("Failed to create .env file")
-        return 1
-    
-    # Step 5: Collect credentials
+    # Step 4: Collect credentials first (before creating .env)
     current_step += 1
     print_step(current_step, total_steps, "Collecting K2Think credentials")
     email, password = collect_credentials()
+    
+    # Step 5: Create .env from template with credentials
+    current_step += 1
+    print_step(current_step, total_steps, "Creating .env configuration")
+    if not create_env_from_example(target_port, email, password):
+        print_error("Failed to create .env file")
+        return 1
     
     # Save credentials
     if not save_accounts(email, password):
@@ -432,4 +439,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
