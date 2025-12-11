@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 K2Think API Proxy - Docker Deployment Script
 ============================================
@@ -41,15 +42,15 @@ def print_step(current: int, total: int, text: str):
 
 def print_success(text: str):
     """Print success message"""
-    print(f"{Colors.OKGREEN}\u2713 {text}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}✓ {text}{Colors.ENDC}")
 
 def print_error(text: str):
     """Print error message"""
-    print(f"{Colors.FAIL}\u2717 {text}{Colors.ENDC}")
+    print(f"{Colors.FAIL}✗ {text}{Colors.ENDC}")
 
 def print_info(text: str):
     """Print info message"""
-    print(f"{Colors.OKBLUE}\u2139 {text}{Colors.ENDC}")
+    print(f"{Colors.OKBLUE}ℹ {text}{Colors.ENDC}")
 
 def check_python_version() -> bool:
     """Check if Python version is 3.7+"""
@@ -308,15 +309,26 @@ def test_api(port: int) -> bool:
             
             print_success("API test successful!")
             print(f"\n{Colors.BOLD}API Response:{Colors.ENDC}")
-            print(f"{Colors.OKBLUE}{'─'*70}{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}{content}{Colors.ENDC}")
-            print(f"{Colors.OKBLUE}{'─'*70}{Colors.ENDC}\n")
+            print(f"{Colors.OKBLUE}{'-'*70}{Colors.ENDC}")
+            # Handle potential encoding issues in response
+            try:
+                print(f"{Colors.OKCYAN}{content}{Colors.ENDC}")
+            except UnicodeEncodeError:
+                # Fallback to ASCII-safe printing
+                print(f"{Colors.OKCYAN}{content.encode('ascii', 'replace').decode('ascii')}{Colors.ENDC}")
+            print(f"{Colors.OKBLUE}{'-'*70}{Colors.ENDC}\n")
             return True
         else:
-            print_error(f"API test failed: {response.status_code}")
+            print_error(f"API test failed: HTTP {response.status_code}")
+            # Try to print error details
+            try:
+                error_text = response.text[:200]
+                print_info(f"Response: {error_text}")
+            except:
+                pass
             return False
     except Exception as e:
-        print_error(f"API test failed: {e}")
+        print_error(f"API test failed: {str(e)}")
         return False
 
 def main():
@@ -393,7 +405,7 @@ def main():
     
     # Print final URL
     print(f"\n{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.BOLD}{Colors.OKGREEN}  \ud83d\ude80 API Ready at: http://localhost:{target_port}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}  🚀 API Ready at: http://localhost:{target_port}{Colors.ENDC}")
     print(f"{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}\n")
     
     print(f"{Colors.BOLD}Docker Management Commands:{Colors.ENDC}")
@@ -410,6 +422,9 @@ if __name__ == "__main__":
         print_error("Deployment cancelled by user")
         sys.exit(1)
     except Exception as e:
-        print_error(f"Unexpected error: {e}")
+        try:
+            print_error(f"Unexpected error: {str(e)}")
+        except:
+            # Absolute fallback if even error printing fails
+            print(f"ERROR: {str(e)}")
         sys.exit(1)
-
