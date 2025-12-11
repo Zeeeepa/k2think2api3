@@ -260,9 +260,9 @@ def fetch_token() -> bool:
             print_error("get_tokens.py not found")
             return False
         
-        # Run get_tokens.py
+        # Run get_tokens.py with data/accounts.txt path
         result = subprocess.run(
-            [sys.executable, 'get_tokens.py'],
+            [sys.executable, 'get_tokens.py', 'data/accounts.txt', 'tokens.txt'],
             capture_output=True,
             text=True,
             timeout=60
