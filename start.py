@@ -78,19 +78,44 @@ def check_python_version() -> bool:
 
 def check_dependencies() -> bool:
     """Check if required Python packages are installed"""
-    required_packages = ['fastapi', 'uvicorn', 'httpx', 'python-dotenv']
+    # Map package names to their import names
+    packages_map = {
+        'fastapi': 'fastapi',
+        'uvicorn': 'uvicorn',
+        'httpx': 'httpx',
+        'python-dotenv': 'dotenv'
+    }
     missing_packages = []
     
-    for package in required_packages:
+    for package_name, import_name in packages_map.items():
         try:
-            __import__(package.replace('-', '_'))
+            __import__(import_name)
         except ImportError:
-            missing_packages.append(package)
+            missing_packages.append(package_name)
     
     if missing_packages:
         print_error(f"Missing required packages: {', '.join(missing_packages)}")
-        print_info("Install them with: pip install -r requirements.txt")
-        return False
+        print_info("Installing dependencies automatically...")
+        # Auto-install missing packages
+        try:
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode == 0:
+                print_success("Dependencies installed successfully")
+                return True
+            else:
+                print_error("Failed to install dependencies")
+                print_info("Please run manually: pip install -r requirements.txt")
+                return False
+        except Exception as e:
+            print_error(f"Auto-install failed: {e}")
+            print_info("Please run manually: pip install -r requirements.txt")
+            return False
     
     print_success("All required packages are installed")
     return True
@@ -111,8 +136,32 @@ def find_available_port(start_port: int = 8001, max_attempts: int = 10) -> Optio
             return port
     return None
 
+def load_existing_credentials() -> Optional[Tuple[str, str]]:
+    """Load credentials from data/accounts.txt if exists"""
+    try:
+        accounts_file = Path('data/accounts.txt')
+        if accounts_file.exists():
+            with open(accounts_file, 'r', encoding='utf-8') as f:
+                data = json.loads(f.read())
+                email = data.get('email')
+                password = data.get('k2_password')
+                if email and password:
+                    return email, password
+    except Exception:
+        pass
+    return None
+
 def collect_credentials() -> Tuple[str, str]:
-    """Collect K2Think credentials from user"""
+    """Collect K2Think credentials from user or load from file"""
+    # Check if credentials already exist
+    existing = load_existing_credentials()
+    if existing:
+        email, password = existing
+        print_header("K2Think Credentials Found")
+        print_success(f"Using existing credentials: {email}")
+        print_info("Delete data/accounts.txt to enter new credentials\n")
+        return email, password
+    
     print_header("K2Think Credentials Setup")
     print_info("Please provide your K2Think account credentials")
     print_info("These will be used to fetch authentication tokens\n")
@@ -300,6 +349,49 @@ def verify_server(port: int) -> bool:
         print_warning(f"Health check failed: {e}")
         return True
 
+def test_api(port: int) -> bool:
+    """Send test request to API and print response"""
+    try:
+        import requests
+        
+        print_header("Testing API Endpoint")
+        print_info('Sending test message: "hello how are you"')
+        
+        url = f"http://127.0.0.1:{port}/v1/chat/completions"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-key-12345'
+        }
+        data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "hello how are you"}],
+            "stream": False,
+            "max_tokens": 150
+        }
+        
+        response = requests.post(url, json=data, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            
+            print_success("API test successful!")
+            print(f"\n{Colors.BOLD}API Response:{Colors.ENDC}")
+            print(f"{Colors.OKBLUE}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{content}{Colors.ENDC}")
+            print(f"{Colors.OKBLUE}{'─'*70}{Colors.ENDC}\n")
+            return True
+        else:
+            print_error(f"API test failed with status {response.status_code}")
+            print_warning(f"Response: {response.text[:200]}")
+            return False
+    except ImportError:
+        print_warning("requests library not available, skipping API test")
+        return True
+    except Exception as e:
+        print_error(f"API test error: {e}")
+        return False
+
 def print_final_info(port: int):
     """Print final deployment information"""
     print_header("Local Deployment Complete!")
@@ -339,7 +431,7 @@ def main():
     """Main deployment function"""
     print_header("K2Think API Proxy - Local Deployment")
     
-    total_steps = 7
+    total_steps = 8
     current_step = 0
     
     # Step 1: Check Python version
@@ -404,8 +496,18 @@ def main():
     # Verify server
     verify_server(target_port)
     
+    # Step 8: Test API
+    current_step += 1
+    print_step(current_step, total_steps, "Testing API with sample request")
+    test_api(target_port)
+    
     # Print final information
     print_final_info(target_port)
+    
+    # Print final URL prominently
+    print(f"\n{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}  🚀 API Ready at: http://127.0.0.1:{target_port}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}\n")
     
     # Keep server running and handle Ctrl+C
     try:
