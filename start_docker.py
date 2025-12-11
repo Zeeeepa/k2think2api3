@@ -1,32 +1,22 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 K2Think API Proxy - Docker Deployment Script
 ============================================
-Automated Docker deployment with intelligent port management,
-credential setup, and token extraction.
+Automated deployment script that creates .env from .env.example,
+collects K2Think credentials, fetches tokens, and deploys with Docker.
 
-Features:
-- Interactive credential collection
-- Automatic .env generation from .env.example
-- Token auto-fetch via get_tokens.py
-- Smart port conflict resolution
-- Docker container build and deployment
-- OpenAI-compatible API endpoint
-- Enforces K2-Think model and retrieved tokens
-- Always uses thinking version
+Usage:
+    python start_docker.py
 """
 
 import os
 import sys
-import json
-import socket
 import subprocess
-import shutil
+import json
 import time
+import socket
 from pathlib import Path
-from typing import Optional, Tuple
-import getpass
+from getpass import getpass
 
 # Color codes for terminal output
 class Colors:
@@ -38,171 +28,168 @@ class Colors:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
 
 def print_header(text: str):
-    """Print formatted header"""
+    """Print a formatted header"""
     print(f"\n{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.HEADER}{Colors.BOLD}{text:^70}{Colors.ENDC}")
+    print(f"{Colors.HEADER}{Colors.BOLD}{text.center(70)}{Colors.ENDC}")
     print(f"{Colors.HEADER}{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
 
-def print_step(step: int, total: int, message: str):
-    """Print step indicator"""
-    print(f"{Colors.OKCYAN}[{step}/{total}] {message}{Colors.ENDC}")
+def print_step(current: int, total: int, text: str):
+    """Print a step indicator"""
+    print(f"{Colors.OKCYAN}[{current}/{total}] {text}{Colors.ENDC}")
 
-def print_success(message: str):
+def print_success(text: str):
     """Print success message"""
-    print(f"{Colors.OKGREEN}✓ {message}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}\u2713 {text}{Colors.ENDC}")
 
-def print_error(message: str):
+def print_error(text: str):
     """Print error message"""
-    print(f"{Colors.FAIL}✗ {message}{Colors.ENDC}")
+    print(f"{Colors.FAIL}\u2717 {text}{Colors.ENDC}")
 
-def print_warning(message: str):
-    """Print warning message"""
-    print(f"{Colors.WARNING}⚠ {message}{Colors.ENDC}")
-
-def print_info(message: str):
+def print_info(text: str):
     """Print info message"""
-    print(f"{Colors.OKBLUE}ℹ {message}{Colors.ENDC}")
+    print(f"{Colors.OKBLUE}\u2139 {text}{Colors.ENDC}")
 
-def get_compose_command() -> list:
-    """Determine which docker compose command to use"""
-    # Try docker compose v2 first
-    try:
-        result = subprocess.run(['docker', 'compose', 'version'], 
-                              capture_output=True, check=True, text=True)
-        return ['docker', 'compose']
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Fall back to docker-compose v1
-        try:
-            subprocess.run(['docker-compose', '--version'], 
-                          capture_output=True, check=True)
-            return ['docker-compose']
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return None
+def check_python_version() -> bool:
+    """Check if Python version is 3.7+"""
+    if sys.version_info < (3, 7):
+        print_error(f"Python 3.7+ required. You have {sys.version}")
+        return False
+    print_success(f"Python {sys.version.split()[0]} detected")
+    return True
 
-def check_docker_installed() -> bool:
+def check_docker() -> bool:
     """Check if Docker and Docker Compose are installed"""
     try:
         # Check Docker
-        result = subprocess.run(['docker', '--version'], 
-                              capture_output=True, check=True, text=True)
-        print_success(f"Docker found: {result.stdout.strip()}")
+        result = subprocess.run(['docker', '--version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            print_error("Docker is not installed")
+            return False
         
         # Check Docker Compose
-        compose_cmd = get_compose_command()
-        if compose_cmd is None:
-            print_error("Docker Compose not found")
+        result = subprocess.run(['docker-compose', '--version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            print_error("Docker Compose is not installed")
             return False
         
-        result = subprocess.run(compose_cmd + ['version'], 
-                              capture_output=True, check=True, text=True)
-        print_success(f"Docker Compose found: {result.stdout.strip()}")
+        print_success("Docker and Docker Compose are installed")
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print_error(f"Docker or Docker Compose not found: {e}")
+    except FileNotFoundError:
+        print_error("Docker or Docker Compose not found")
         return False
 
-def is_port_in_use(port: int) -> bool:
-    """Check if a port is already in use"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(('0.0.0.0', port))
-            return False
-        except OSError:
-            return True
-
-def find_available_port(start_port: int = 8001, max_attempts: int = 10) -> Optional[int]:
+def find_available_port(start_port: int = 8001) -> int:
     """Find an available port starting from start_port"""
-    for port in range(start_port, start_port + max_attempts):
-        if not is_port_in_use(port):
+    port = start_port
+    while port < start_port + 100:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(('127.0.0.1', port))
+            sock.close()
             return port
+        except OSError:
+            port += 1
+    return start_port
+
+def load_existing_credentials() -> tuple[str, str] | None:
+    """Load credentials from data/accounts.txt if exists"""
+    try:
+        accounts_file = Path('data/accounts.txt')
+        if accounts_file.exists():
+            with open(accounts_file, 'r', encoding='utf-8') as f:
+                data = json.loads(f.read())
+                email = data.get('email')
+                password = data.get('k2_password')
+                if email and password:
+                    return email, password
+    except Exception:
+        pass
     return None
 
-def collect_credentials() -> Tuple[str, str]:
-    """Collect K2Think credentials from user"""
+def collect_credentials() -> tuple[str, str] | None:
+    """Collect or load K2Think credentials"""
+    # Try to load existing credentials first
+    existing = load_existing_credentials()
+    if existing:
+        print_header("K2Think Credentials Found")
+        print_success(f"Using existing credentials: {existing[0]}")
+        print_info("Delete data/accounts.txt to enter new credentials")
+        return existing
+    
+    # Collect new credentials
     print_header("K2Think Credentials Setup")
     print_info("Please provide your K2Think account credentials")
     print_info("These will be used to fetch authentication tokens\n")
     
-    while True:
-        email = input(f"{Colors.OKCYAN}Enter K2Think Email: {Colors.ENDC}").strip()
-        if email and '@' in email:
-            break
-        print_error("Invalid email address. Please try again.")
-    
-    while True:
-        password = getpass.getpass(f"{Colors.OKCYAN}Enter K2Think Password: {Colors.ENDC}")
-        if password:
-            # Confirm password
-            password_confirm = getpass.getpass(f"{Colors.OKCYAN}Confirm Password: {Colors.ENDC}")
-            if password == password_confirm:
-                break
-            print_error("Passwords don't match. Please try again.")
-        else:
-            print_error("Password cannot be empty. Please try again.")
-    
-    return email, password
-
-def create_env_from_example(target_port: int, email: str = None, password: str = None) -> bool:
-    """Create .env file from .env.example with specified port and optional credentials"""
     try:
-        env_example_path = Path('.env.example')
-        env_path = Path('.env')
+        email = input(f"{Colors.OKCYAN}Enter K2Think Email: {Colors.ENDC}")
+        password = getpass(f"{Colors.OKCYAN}Enter K2Think Password: {Colors.ENDC}")
+        confirm_password = getpass(f"{Colors.OKCYAN}Confirm Password: {Colors.ENDC}")
         
-        if not env_example_path.exists():
+        if password != confirm_password:
+            print_error("Passwords do not match")
+            return None
+        
+        if not email or not password:
+            print_error("Email and password are required")
+            return None
+        
+        return email, password
+    except KeyboardInterrupt:
+        print("\n")
+        print_error("Credential collection cancelled")
+        return None
+
+def create_env_file(port: int) -> bool:
+    """Create .env file from .env.example"""
+    try:
+        env_example = Path('.env.example')
+        env_file = Path('.env')
+        
+        if not env_example.exists():
             print_error(".env.example file not found")
             return False
         
         # Read .env.example
-        with open(env_example_path, 'r', encoding='utf-8') as f:
-            env_content = f.read()
+        with open(env_example, 'r', encoding='utf-8') as f:
+            content = f.read()
         
-        # Update PORT and optionally add credentials in the content
-        lines = env_content.split('\n')
-        updated_lines = []
-        for line in lines:
+        # Update PORT
+        lines = []
+        for line in content.split('\n'):
             if line.startswith('PORT='):
-                updated_lines.append(f'PORT={target_port}')
+                lines.append(f'PORT={port}')
             else:
-                updated_lines.append(line)
+                lines.append(line)
         
-        # Add K2Think credentials if provided (for reference, not used by proxy)
-        if email and password:
-            updated_lines.append('')
-            updated_lines.append('# K2Think credentials (automatically added)')
-            updated_lines.append(f'# K2THINK_EMAIL={email}')
-            updated_lines.append(f'# K2THINK_PASSWORD=<hidden>')
+        # Write .env
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
         
-        # Write to .env
-        with open(env_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(updated_lines))
-        
-        print_success(f"Created .env file (PORT={target_port})")
+        print_success(f"Created .env file (PORT={port}, HOST=0.0.0.0)")
         return True
     except Exception as e:
         print_error(f"Failed to create .env file: {e}")
         return False
 
-def save_accounts(email: str, password: str) -> bool:
+def save_credentials(email: str, password: str) -> bool:
     """Save credentials to data/accounts.txt"""
     try:
-        # Create data directory if it doesn't exist
         data_dir = Path('data')
         data_dir.mkdir(exist_ok=True)
         
-        # Create accounts.txt with JSON format
         accounts_file = data_dir / 'accounts.txt'
-        account_data = {
+        credentials = {
             "email": email,
             "k2_password": password
         }
         
         with open(accounts_file, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(account_data))
+            f.write(json.dumps(credentials))
         
-        print_success(f"Saved credentials to {accounts_file}")
+        print_success("Saved credentials to data/accounts.txt")
         return True
     except Exception as e:
         print_error(f"Failed to save credentials: {e}")
@@ -213,14 +200,12 @@ def fetch_token() -> bool:
     try:
         print_info("Fetching authentication token from K2Think API...")
         
-        # Check if get_tokens.py exists
         if not Path('get_tokens.py').exists():
             print_error("get_tokens.py not found")
             return False
         
-        # Run get_tokens.py
         result = subprocess.run(
-            [sys.executable, 'get_tokens.py'],
+            [sys.executable, 'get_tokens.py', 'data/accounts.txt', 'data/tokens.txt'],
             capture_output=True,
             text=True,
             timeout=60
@@ -228,7 +213,6 @@ def fetch_token() -> bool:
         
         if result.returncode == 0:
             print_success("Token fetched successfully")
-            # Print relevant output (excluding sensitive data)
             for line in result.stdout.split('\n'):
                 if '成功' in line or '处理完成' in line or 'Success' in line.lower():
                     print_info(f"  {line.strip()}")
@@ -240,235 +224,192 @@ def fetch_token() -> bool:
         print_error("Token fetch timed out")
         return False
     except Exception as e:
-        print_error(f"Error fetching token: {e}")
+        print_error(f"Failed to fetch token: {e}")
         return False
 
-def build_docker_image() -> bool:
-    """Build Docker image locally"""
+def deploy_docker(port: int) -> bool:
+    """Deploy using Docker Compose"""
     try:
-        print_info("Building Docker image (this may take a few minutes)...")
+        print_info("Building and starting Docker containers...")
         
-        compose_cmd = get_compose_command()
-        if compose_cmd is None:
-            print_error("Docker Compose command not available")
-            return False
-        
-        # Build using docker compose
-        result = subprocess.run(
-            compose_cmd + ['build', '--no-cache'],
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            print_success("Docker image built successfully")
-            return True
-        else:
-            print_error(f"Failed to build Docker image:\n{result.stderr}")
-            return False
-    except Exception as e:
-        print_error(f"Error building Docker image: {e}")
-        return False
-
-def start_docker_container(port: int) -> bool:
-    """Start Docker container with docker-compose"""
-    try:
-        print_info("Starting Docker container...")
-        
-        compose_cmd = get_compose_command()
-        if compose_cmd is None:
-            print_error("Docker Compose command not available")
-            return False
-        
-        # Set environment variable for port
+        # Set PORT environment variable for docker-compose
         env = os.environ.copy()
-        env['HOST_PORT'] = str(port)
+        env['SERVER_PORT'] = str(port)
         
         # Stop any existing containers
-        subprocess.run(
-            compose_cmd + ['down'],
-            capture_output=True,
-            env=env
-        )
+        subprocess.run(['docker-compose', 'down'], env=env, capture_output=True)
         
-        # Start container
+        # Build and start
         result = subprocess.run(
-            compose_cmd + ['up', '-d'],
+            ['docker-compose', 'up', '-d', '--build'],
+            env=env,
             capture_output=True,
             text=True,
-            env=env
+            timeout=300
         )
         
-        if result.returncode == 0:
-            print_success("Docker container started successfully")
-            
-            # Wait for service to be ready
-            print_info("Waiting for service to be ready...")
-            time.sleep(5)
-            
-            return True
-        else:
-            print_error(f"Failed to start container:\n{result.stderr}")
+        if result.returncode != 0:
+            print_error(f"Docker deployment failed: {result.stderr}")
             return False
+        
+        print_success("Docker containers started")
+        return True
+    except subprocess.TimeoutExpired:
+        print_error("Docker deployment timed out")
+        return False
     except Exception as e:
-        print_error(f"Error starting container: {e}")
+        print_error(f"Docker deployment failed: {e}")
         return False
 
 def verify_deployment(port: int) -> bool:
-    """Verify that the deployment is working"""
+    """Verify the deployment is working"""
+    try:
+        print_info("Verifying deployment...")
+        time.sleep(5)  # Wait for server to fully start
+        
+        import requests
+        response = requests.get(f"http://localhost:{port}/health", timeout=10)
+        
+        if response.status_code == 200:
+            print_success("Server is healthy and responding")
+            return True
+        else:
+            print_error(f"Server health check failed: {response.status_code}")
+            return False
+    except Exception as e:
+        print_error(f"Deployment verification failed: {e}")
+        return False
+
+def test_api(port: int) -> bool:
+    """Send test request to API and print response"""
     try:
         import requests
         
-        print_info("Verifying deployment...")
+        print_header("Testing API Endpoint")
+        print_info('Sending test message: "hello how are you"')
         
-        # Try to connect to health endpoint
-        url = f"http://127.0.0.1:{port}/health"
+        url = f"http://localhost:{port}/v1/chat/completions"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer sk-k2think'
+        }
+        data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "hello how are you"}],
+            "stream": False,
+            "max_tokens": 150
+        }
         
-        for attempt in range(3):
-            try:
-                response = requests.get(url, timeout=5)
-                if response.status_code == 200:
-                    print_success("Service is healthy and responding")
-                    return True
-            except requests.exceptions.RequestException:
-                if attempt < 2:
-                    print_warning(f"Waiting for service... (attempt {attempt + 1}/3)")
-                    time.sleep(5)
+        response = requests.post(url, json=data, headers=headers, timeout=30)
         
-        print_warning("Could not verify service health, but container is running")
-        return True
-    except ImportError:
-        print_warning("requests library not installed, skipping health check")
-        return True
+        if response.status_code == 200:
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            
+            print_success("API test successful!")
+            print(f"\n{Colors.BOLD}API Response:{Colors.ENDC}")
+            print(f"{Colors.OKBLUE}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{content}{Colors.ENDC}")
+            print(f"{Colors.OKBLUE}{'─'*70}{Colors.ENDC}\n")
+            return True
+        else:
+            print_error(f"API test failed: {response.status_code}")
+            return False
     except Exception as e:
-        print_warning(f"Health check failed: {e}")
-        return True
-
-def print_final_info(port: int):
-    """Print final deployment information"""
-    print_header("Deployment Complete!")
-    
-    print(f"{Colors.OKGREEN}{Colors.BOLD}K2Think API Proxy is now running!{Colors.ENDC}\n")
-    
-    print(f"{Colors.BOLD}OpenAI-Compatible API Endpoint:{Colors.ENDC}")
-    print(f"  {Colors.OKCYAN}http://127.0.0.1:{port}/v1/chat/completions{Colors.ENDC}\n")
-    
-    print(f"{Colors.BOLD}Base URL:{Colors.ENDC}")
-    print(f"  {Colors.OKCYAN}http://127.0.0.1:{port}{Colors.ENDC}\n")
-    
-    print(f"{Colors.BOLD}Configuration:{Colors.ENDC}")
-    print(f"  {Colors.OKBLUE}• Model:{Colors.ENDC} MBZUAI-IFM/K2-Think (enforced - ignores client requests)")
-    print(f"  {Colors.OKBLUE}• Token:{Colors.ENDC} Retrieved from K2Think API (enforced - ignores client tokens)")
-    print(f"  {Colors.OKBLUE}• Thinking:{Colors.ENDC} Enabled (shows reasoning in <think> tags)")
-    print(f"  {Colors.OKBLUE}• API Key:{Colors.ENDC} sk-k2think (from .env)\n")
-    
-    print(f"{Colors.BOLD}Example Usage:{Colors.ENDC}")
-    print(f"{Colors.OKBLUE}curl http://127.0.0.1:{port}/v1/chat/completions \\")
-    print(f"  -H 'Content-Type: application/json' \\")
-    print(f"  -H 'Authorization: Bearer sk-k2think' \\")
-    print(f"  -d '{{")
-    print(f'    "model": "any-model-name",')
-    print(f'    "messages": [{{"role": "user", "content": "Hello!"}}]')
-    print(f"  }}'{Colors.ENDC}\n")
-    
-    print(f"{Colors.WARNING}Note: The proxy will ALWAYS use:{Colors.ENDC}")
-    print(f"  • K2-Think model (regardless of 'model' parameter)")
-    print(f"  • Retrieved token from K2Think API (regardless of Authorization header)")
-    print(f"  • Thinking mode enabled (reasoning visible in responses)\n")
-    
-    compose_cmd_str = ' '.join(get_compose_command())
-    print(f"{Colors.BOLD}Management Commands:{Colors.ENDC}")
-    print(f"  {Colors.OKBLUE}View logs:{Colors.ENDC}       {compose_cmd_str} logs -f")
-    print(f"  {Colors.OKBLUE}Stop service:{Colors.ENDC}    {compose_cmd_str} down")
-    print(f"  {Colors.OKBLUE}Restart service:{Colors.ENDC} {compose_cmd_str} restart")
-    print(f"  {Colors.OKBLUE}Check status:{Colors.ENDC}    {compose_cmd_str} ps\n")
+        print_error(f"API test failed: {e}")
+        return False
 
 def main():
-    """Main deployment function"""
-    print_header("K2Think API Proxy - Docker Deployment")
-    
+    """Main deployment workflow"""
     total_steps = 8
     current_step = 0
     
-    # Step 1: Check Docker
+    print_header("K2Think API Proxy - Docker Deployment")
+    
+    # Step 1: Check Python version
+    current_step += 1
+    print_step(current_step, total_steps, "Checking Python version")
+    if not check_python_version():
+        sys.exit(1)
+    
+    # Step 2: Check Docker
     current_step += 1
     print_step(current_step, total_steps, "Checking Docker installation")
-    if not check_docker_installed():
-        print_error("Docker or Docker Compose is not installed")
-        print_info("Please install Docker and Docker Compose before running this script")
-        return 1
+    if not check_docker():
+        print_error("Please install Docker and Docker Compose first")
+        sys.exit(1)
     
-    # Step 2: Find available port
+    # Step 3: Find available port
     current_step += 1
     print_step(current_step, total_steps, "Finding available port")
-    default_port = 8001
-    if is_port_in_use(default_port):
-        print_warning(f"Port {default_port} is in use")
-        target_port = find_available_port(default_port + 1)
-        if target_port is None:
-            print_error("Could not find an available port")
-            return 1
-        print_success(f"Using alternate port: {target_port}")
-    else:
-        target_port = default_port
+    target_port = find_available_port(8001)
+    if target_port == 8001:
         print_success(f"Using default port: {target_port}")
+    else:
+        print_success(f"Using alternate port: {target_port} (default 8001 was in use)")
     
-    # Step 3: Collect credentials first (before creating .env)
+    # Step 4: Collect credentials
     current_step += 1
     print_step(current_step, total_steps, "Collecting K2Think credentials")
-    email, password = collect_credentials()
+    credentials = collect_credentials()
+    if not credentials:
+        print_error("Failed to collect credentials")
+        sys.exit(1)
+    email, password = credentials
     
-    # Step 4: Create .env from template with credentials
+    # Step 5: Create .env
     current_step += 1
     print_step(current_step, total_steps, "Creating .env configuration")
-    if not create_env_from_example(target_port, email, password):
+    if not create_env_file(target_port):
         print_error("Failed to create .env file")
-        return 1
+        sys.exit(1)
     
-    # Step 5: Save credentials
-    current_step += 1
-    print_step(current_step, total_steps, "Saving credentials to accounts.txt")
-    if not save_accounts(email, password):
+    if not save_credentials(email, password):
         print_error("Failed to save credentials")
-        return 1
+        sys.exit(1)
     
     # Step 6: Fetch token
     current_step += 1
     print_step(current_step, total_steps, "Fetching authentication token")
     if not fetch_token():
         print_error("Failed to fetch token")
-        return 1
+        sys.exit(1)
     
-    # Step 7: Build Docker image
+    # Step 7: Deploy Docker
     current_step += 1
-    print_step(current_step, total_steps, "Building Docker image")
-    if not build_docker_image():
-        print_error("Failed to build Docker image")
-        return 1
+    print_step(current_step, total_steps, "Deploying with Docker Compose")
+    if not deploy_docker(target_port):
+        print_error("Failed to deploy with Docker")
+        sys.exit(1)
     
-    # Step 8: Start container
+    if not verify_deployment(target_port):
+        print_error("Deployment verification failed")
+        sys.exit(1)
+    
+    # Step 8: Test API
     current_step += 1
-    print_step(current_step, total_steps, "Starting Docker container")
-    if not start_docker_container(target_port):
-        print_error("Failed to start Docker container")
-        return 1
+    print_step(current_step, total_steps, "Testing API with sample request")
+    test_api(target_port)
     
-    # Verify deployment
-    verify_deployment(target_port)
+    # Print final URL
+    print(f"\n{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}  \ud83d\ude80 API Ready at: http://localhost:{target_port}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}\n")
     
-    # Print final information
-    print_final_info(target_port)
-    
-    return 0
+    print(f"{Colors.BOLD}Docker Management Commands:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}docker-compose logs -f{Colors.ENDC}  # View logs")
+    print(f"  {Colors.OKCYAN}docker-compose ps{Colors.ENDC}        # Check status")
+    print(f"  {Colors.OKCYAN}docker-compose down{Colors.ENDC}      # Stop containers")
+    print(f"  {Colors.OKCYAN}docker-compose restart{Colors.ENDC}   # Restart containers\n")
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        main()
     except KeyboardInterrupt:
-        print(f"\n{Colors.WARNING}Deployment cancelled by user{Colors.ENDC}")
+        print("\n")
+        print_error("Deployment cancelled by user")
         sys.exit(1)
     except Exception as e:
         print_error(f"Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
+
