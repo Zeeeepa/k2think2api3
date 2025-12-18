@@ -4,8 +4,7 @@ services:
   k2think-api:
     image: julienol/k2think2api:latest
     container_name: k2think-api
-    ports:
-      - "${HOST_PORT:-8001}:8001"
+    network_mode: "host"
     volumes:
       # 使用目录挂载而非文件挂载，避免文件锁定问题
       - ./data:/app/data

@@ -36,21 +36,22 @@ class APIHandler:
         self.token_manager = config.get_token_manager()
     
     def validate_api_key(self, authorization: str) -> bool:
-        """验证API密钥"""
+        """验证API密钥 - 接受任何Bearer token格式"""
+        # 只检查格式是否正确，不验证具体的key值
+        # 这样客户端可以发送任何token，代理会使用从K2Think获取的真实token
         if not authorization or not authorization.startswith(APIConstants.BEARER_PREFIX):
             return False
-        api_key = authorization[APIConstants.BEARER_PREFIX_LENGTH:]  # 移除 "Bearer " 前缀
-        return api_key == self.config.VALID_API_KEY
+        return True  # 接受任何Bearer token
     
     def should_output_thinking(self, model_name: str) -> bool:
         """根据模型名判断是否应该输出思考内容"""
         return model_name != APIConstants.MODEL_ID_NOTHINK
     
     def get_actual_model_id(self, model_name: str) -> str:
-        """获取实际的模型ID（将nothink版本映射回原始模型）"""
-        if model_name == APIConstants.MODEL_ID_NOTHINK:
-            return APIConstants.MODEL_ID
-        return model_name
+        """获取实际的模型ID - 总是使用K2-Think模型"""
+        # 忽略客户端发送的模型，总是使用K2-Think
+        # 这确保无论客户端请求什么模型，都使用正确的K2-Think模型
+        return APIConstants.MODEL_ID
     
     async def get_models(self) -> ModelsResponse:
         """获取模型列表"""
