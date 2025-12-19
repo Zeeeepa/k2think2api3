@@ -2,13 +2,15 @@
 
 基于 FastAPI 构建的 K2Think AI 模型代理服务，提供 OpenAI 兼容的 API 接口。
 
-## 核心功能特性
+## ✨ 核心功能特性
 
 - 🧠 **MBZUAI K2-Think 模型**: 支持 MBZUAI 开发的 K2-Think 推理模型
 - 🔄 **OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝对接现有应用
 - ⚡ **流式响应**: 支持实时流式聊天响应，支持控制thinking输出
 - 🛠️ **工具调用**: 支持 OpenAI Function Calling，可集成外部工具和API
 - 📊 **文件上传**: 支持文件、图像上传
+- 🚀 **多实例部署**: 支持同时运行多个独立实例，每个实例使用不同凭证
+- 🎯 **统一管理**: 集中管理所有实例的启动、停止、监控
 
 ## 智能Token管理系统
 
@@ -41,9 +43,97 @@
 - 🚀 **高性能**: 异步处理架构，支持高并发请求
 - 🐳 **容器化**: 支持 Docker 部署
 
-## 快速开始
+## 🚀 快速开始
 
-### 本地运行
+### 多实例部署（推荐）
+
+使用 `k2think` 命令管理多个独立的 K2Think 实例，每个实例可以使用不同的凭证和端口。
+
+#### 创建实例
+
+```bash
+# 创建新实例（交互式输入凭证）
+./k2think create prod-api --port 8001
+
+# 或直接提供凭证
+./k2think create prod-api --port 8001 --email user@example.com --password your-password
+
+# 系统会自动：
+# 1. 分配端口（如果未指定）
+# 2. 创建实例目录结构
+# 3. 生成 docker-compose.yml 和 .env
+# 4. 获取认证 token
+```
+
+#### 管理实例
+
+```bash
+# 启动实例
+./k2think start prod-api
+
+# 停止实例
+./k2think stop prod-api
+
+# 重启实例
+./k2think restart prod-api
+
+# 查看所有实例
+./k2think list
+
+# 查看活动端点
+./k2think endpoints
+
+# 查看实例详情
+./k2think status prod-api
+
+# 查看日志
+./k2think logs prod-api
+./k2think logs prod-api -f  # 实时跟踪
+
+# 删除实例
+./k2think delete test-api
+./k2think delete test-api --keep-data  # 保留数据备份
+```
+
+#### 示例：运行多个实例
+
+```bash
+# 生产环境
+./k2think create prod --port 8001 --email prod@company.com
+
+# 测试环境
+./k2think create staging --port 8002 --email staging@company.com
+
+# 开发环境
+./k2think create dev --port 8003 --email dev@company.com
+
+# 启动所有实例
+./k2think start prod
+./k2think start staging
+./k2think start dev
+
+# 查看所有活动端点
+./k2think endpoints
+```
+
+输出示例：
+```
+╔══════════════════════════════════════════════════════════════════╗
+║              K2THINK DEPLOYMENT MANAGER                          ║
+╠══════════════════════════════════════════════════════════════════╣
+║ Total Instances: 3  |  Running: 3  |  Stopped: 0                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+NAME          STATUS    PORT   ENDPOINT                    
+----------------------------------------------------------------------
+prod          ✓ running 8001   http://localhost:8001       
+staging       ✓ running 8002   http://localhost:8002       
+dev           ✓ running 8003   http://localhost:8003       
+```
+
+### 单实例部署（传统方式）
+
+#### 本地运行
 
 1. **安装依赖**
 
@@ -614,6 +704,46 @@ python check_config_simple.py --example
 
    - 容器以非root用户运行
    - 敏感文件通过volume挂载而非打包到镜像中
+
+## 🏗️ 多实例架构
+
+### 目录结构
+
+```
+project/
+├── k2think_manager.py          # 多实例管理器
+├── k2think                     # 统一CLI入口
+├── get_tokens.py               # Token获取工具
+├── k2think_proxy.py            # 代理服务主程序
+├── instances/                  # 实例目录
+│   ├── instances.json          # 实例注册表
+│   ├── prod-api/
+│   │   ├── docker-compose.yml
+│   │   ├── .env
+│   │   └── data/
+│   │       ├── accounts.txt
+│   │       └── tokens.txt
+│   ├── staging-api/
+│   │   └── ...
+│   └── dev-api/
+│       └── ...
+└── ...
+```
+
+### 关键特性
+
+1. **独立隔离**: 每个实例拥有独立的容器、网络、凭证和端口
+2. **桥接网络**: 使用 Docker 桥接网络，避免端口冲突，支持 Mac/Windows
+3. **自动端口分配**: 从 8001 开始自动分配可用端口
+4. **中央注册表**: `instances.json` 记录所有实例状态和配置
+5. **完整中文支持**: UTF-8 编码，支持中文邮箱和密码输入
+
+### 多实例使用场景
+
+- **多账户管理**: 为不同的 K2Think 账户运行独立实例
+- **环境隔离**: 生产、测试、开发环境独立部署
+- **负载分散**: 将请求分散到多个实例，提高并发能力
+- **A/B 测试**: 同时运行不同配置的实例进行对比测试
 
 ## 许可证
 
