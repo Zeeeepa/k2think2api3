@@ -52,17 +52,24 @@
 #### 创建实例
 
 ```bash
-# 创建新实例（交互式输入凭证）
+# 方式1: 交互式输入凭证
 ./k2think create prod-api --port 8001
 
-# 或直接提供凭证
+# 方式2: 使用环境变量（推荐用于自动化）
+export K2_EMAIL="user@example.com"
+export K2_PASSWORD="your-password"
+./k2think create prod-api --port 8001
+
+# 方式3: 命令行参数（不推荐，会暴露在进程列表中）
 ./k2think create prod-api --port 8001 --email user@example.com --password your-password
 
 # 系统会自动：
-# 1. 分配端口（如果未指定）
-# 2. 创建实例目录结构
-# 3. 生成 docker-compose.yml 和 .env
-# 4. 获取认证 token
+# 1. 从 CLI > 环境变量 > 交互提示 获取凭证（优先级顺序）
+# 2. 分配端口（如果未指定）
+# 3. 创建实例目录结构
+# 4. 生成 docker-compose.yml 和 .env
+# 5. 保存凭证并设置安全权限（0600）
+# 6. 获取认证 token
 ```
 
 #### 管理实例
@@ -93,6 +100,17 @@
 # 删除实例
 ./k2think delete test-api
 ./k2think delete test-api --keep-data  # 保留数据备份
+
+# 批量操作
+./k2think start-all     # 启动所有已停止的实例
+./k2think stop-all      # 停止所有运行中的实例
+./k2think restart-all   # 重启所有实例
+
+# 健康检查
+./k2think health        # 检查所有实例健康状态
+
+# 克隆实例
+./k2think clone prod prod-backup --port 8010  # 克隆实例到新端口
 ```
 
 #### 示例：运行多个实例
@@ -737,6 +755,10 @@ project/
 3. **自动端口分配**: 从 8001 开始自动分配可用端口
 4. **中央注册表**: `instances.json` 记录所有实例状态和配置
 5. **完整中文支持**: UTF-8 编码，支持中文邮箱和密码输入
+6. **多源凭证管理**: CLI 参数 → 环境变量 → 交互提示（优先级顺序）
+7. **批量操作**: 一键启动/停止/重启所有实例
+8. **健康监控**: 实时检查所有实例运行状态
+9. **实例克隆**: 快速复制实例配置到新端口
 
 ### 多实例使用场景
 

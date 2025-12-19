@@ -337,8 +337,41 @@ LOG_LEVEL=INFO
         
         print_success(f"Created .env (PORT={port})")
     
+    def _get_credentials(self, email: Optional[str] = None, password: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
+        """Get credentials from various sources in priority order"""
+        # Priority: CLI args > Env vars > Prompt
+        
+        # Email
+        if not email:
+            email = os.getenv('K2_EMAIL')
+            if not email:
+                try:
+                    email = input(f"{Colors.OKCYAN}Enter K2Think Email: {Colors.ENDC}")
+                except (KeyboardInterrupt, EOFError):
+                    return None, None
+        
+        if not email:
+            return None, None
+        
+        # Password
+        if not password:
+            password = os.getenv('K2_PASSWORD')
+            if not password:
+                try:
+                    password = getpass(f"{Colors.OKCYAN}Enter K2Think Password: {Colors.ENDC}")
+                    if password:
+                        confirm = getpass(f"{Colors.OKCYAN}Confirm Password: {Colors.ENDC}")
+                        if password != confirm:
+                            print_error("Passwords do not match")
+                            return None, None
+                except (KeyboardInterrupt, EOFError):
+                    return None, None
+        
+        return email, password
+    
     def create_instance(self, name: str, port: Optional[int] = None, 
-                       email: Optional[str] = None, password: Optional[str] = None) -> bool:
+                       email: Optional[str] = None, password: Optional[str] = None,
+                       use_template: Optional[str] = None) -> bool:
         """Create new instance"""
         print_header(f"Creating Instance: {name}")
         
@@ -385,14 +418,22 @@ LOG_LEVEL=INFO
             shutil.rmtree(instance_dir)
             return False
         
-        # Handle credentials
-        if email and password:
+        # Handle credentials - seamless retrieval from multiple sources
+        final_email, final_password = self._get_credentials(email, password)
+        
+        if final_email and final_password:
             accounts_file = instance_dir / "data" / "accounts.txt"
             try:
-                credentials = {"email": email, "k2_password": password}
+                credentials = {"email": final_email, "k2_password": final_password}
                 with open(accounts_file, 'w', encoding='utf-8') as f:
                     f.write(json.dumps(credentials))
-                print_success("Saved credentials")
+                
+                # Set file permissions (owner read/write only)
+                try:
+                    os.chmod(accounts_file, 0o600)
+                    print_success("Saved credentials (secured with 0600 permissions)")
+                except:
+                    print_success("Saved credentials")
                 
                 # Fetch tokens
                 print_info("Fetching authentication token...")
@@ -401,6 +442,7 @@ LOG_LEVEL=INFO
                 print_warning(f"Failed to save credentials: {e}")
         else:
             print_info("No credentials provided. You can add them later to data/accounts.txt")
+            print_info(f"Tip: Use K2_EMAIL and K2_PASSWORD environment variables for automation")
         
         # Register instance
         container_name = f"k2think-{name}"
@@ -669,6 +711,119 @@ LOG_LEVEL=INFO
             print_error(f"Failed to show logs: {e}")
         finally:
             os.chdir(Path(__file__).parent)
+    
+    def start_all(self):
+        """Start all stopped instances"""
+        instances = self.registry.list_instances()
+        stopped = [name for name, info in instances.items() if info['status'] != 'running']
+        
+        if not stopped:
+            print_info("All instances are already running")
+            return
+        
+        print_header(f"Starting {len(stopped)} Instances")
+        
+        success = 0
+        for name in stopped:
+            print(f"\n{Colors.BOLD}Starting {name}...{Colors.ENDC}")
+            if self.start_instance(name):
+                success += 1
+        
+        print(f"\n{Colors.OKGREEN}✓ Started {success}/{len(stopped)} instances{Colors.ENDC}")
+    
+    def stop_all(self):
+        """Stop all running instances"""
+        instances = self.registry.list_instances()
+        running = [name for name, info in instances.items() if info['status'] == 'running']
+        
+        if not running:
+            print_info("No instances are currently running")
+            return
+        
+        print_header(f"Stopping {len(running)} Instances")
+        
+        success = 0
+        for name in running:
+            print(f"\n{Colors.BOLD}Stopping {name}...{Colors.ENDC}")
+            if self.stop_instance(name):
+                success += 1
+        
+        print(f"\n{Colors.OKGREEN}✓ Stopped {success}/{len(running)} instances{Colors.ENDC}")
+    
+    def restart_all(self):
+        """Restart all instances"""
+        instances = self.registry.list_instances()
+        
+        if not instances:
+            print_info("No instances to restart")
+            return
+        
+        print_header(f"Restarting {len(instances)} Instances")
+        
+        success = 0
+        for name in instances.keys():
+            print(f"\n{Colors.BOLD}Restarting {name}...{Colors.ENDC}")
+            if self.restart_instance(name):
+                success += 1
+        
+        print(f"\n{Colors.OKGREEN}✓ Restarted {success}/{len(instances)} instances{Colors.ENDC}")
+    
+    def health_check_all(self):
+        """Check health of all running instances"""
+        instances = self.registry.list_instances()
+        running = {name: info for name, info in instances.items() if info['status'] == 'running'}
+        
+        if not running:
+            print_info("No running instances to check")
+            return
+        
+        print_header("Instance Health Check")
+        
+        healthy = 0
+        for name, info in running.items():
+            # Check if container is running
+            result = subprocess.run(
+                ['docker', 'ps', '--filter', f"name={info['container_name']}", 
+                 '--format', '{{.Status}}'],
+                capture_output=True, text=True
+            )
+            
+            if result.stdout.strip() and 'Up' in result.stdout:
+                print(f"{Colors.OKGREEN}✓ {name:<20}{Colors.ENDC} {info['endpoint']} - Healthy")
+                healthy += 1
+            else:
+                print(f"{Colors.FAIL}✗ {name:<20}{Colors.ENDC} {info['endpoint']} - Unhealthy")
+        
+        print(f"\n{Colors.BOLD}Health: {healthy}/{len(running)} instances healthy{Colors.ENDC}")
+    
+    def clone_instance(self, source_name: str, dest_name: str, port: Optional[int] = None):
+        """Clone an existing instance with new credentials"""
+        print_header(f"Cloning Instance: {source_name} → {dest_name}")
+        
+        if not self.registry.instance_exists(source_name):
+            print_error(f"Source instance '{source_name}' not found")
+            return False
+        
+        if self.registry.instance_exists(dest_name):
+            print_error(f"Destination instance '{dest_name}' already exists")
+            return False
+        
+        source_dir = self._get_instance_dir(source_name)
+        
+        # Get credentials for new instance
+        print_info("Enter credentials for cloned instance:")
+        email, password = self._get_credentials()
+        
+        if not email or not password:
+            print_error("Credentials required for cloning")
+            return False
+        
+        # Create new instance
+        if self.create_instance(dest_name, port, email, password):
+            print_success(f"Successfully cloned '{source_name}' to '{dest_name}'")
+            return True
+        
+        return False
 
 # ============================================================================
 # MAIN CLI
@@ -731,6 +886,20 @@ Examples:
     logs_parser.add_argument('-f', '--follow', action='store_true', help='Follow log output')
     logs_parser.add_argument('--tail', type=int, default=100, help='Number of lines to show')
     
+    # Bulk operations
+    start_all_parser = subparsers.add_parser('start-all', help='Start all stopped instances')
+    stop_all_parser = subparsers.add_parser('stop-all', help='Stop all running instances')
+    restart_all_parser = subparsers.add_parser('restart-all', help='Restart all instances')
+    
+    # Health check
+    health_parser = subparsers.add_parser('health', help='Check health of all running instances')
+    
+    # Clone command
+    clone_parser = subparsers.add_parser('clone', help='Clone an instance')
+    clone_parser.add_argument('source', help='Source instance name')
+    clone_parser.add_argument('dest', help='Destination instance name')
+    clone_parser.add_argument('--port', type=int, help='Port for cloned instance')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -773,6 +942,21 @@ Examples:
         
         elif args.command == 'logs':
             manager.show_logs(args.name, args.follow, args.tail)
+        
+        elif args.command == 'start-all':
+            manager.start_all()
+        
+        elif args.command == 'stop-all':
+            manager.stop_all()
+        
+        elif args.command == 'restart-all':
+            manager.restart_all()
+        
+        elif args.command == 'health':
+            manager.health_check_all()
+        
+        elif args.command == 'clone':
+            manager.clone_instance(args.source, args.dest, args.port)
     
     except KeyboardInterrupt:
         print("\n")
@@ -784,4 +968,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-
