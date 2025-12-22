@@ -245,46 +245,32 @@ def fetch_token() -> bool:
         return False
 
 def deploy_docker(port: int) -> bool:
-    """Deploy using Docker Compose with intelligent error handling"""
+    """Deploy using Docker Compose - builds from local Dockerfile"""
     try:
-        print_info("Building and starting Docker containers...")
+        print_info("Building and starting Docker containers from local Dockerfile...")
         
         # Set PORT environment variable for docker-compose
         env = os.environ.copy()
-        env['SERVER_PORT'] = str(port)
+        env['PORT'] = str(port)  # Pass PORT to docker-compose
         
         # Stop any existing containers
+        print_info("Stopping any existing containers...")
         subprocess.run(['docker-compose', 'down'], env=env, capture_output=True)
         
-        # Try to build image locally first (avoid pull issues)
-        print_info("Building Docker image locally...")
-        build_result = subprocess.run(
-            ['docker-compose', 'build', '--no-cache'],
+        # Build and start with docker-compose (it handles build from Dockerfile)
+        print_info(f"Building image and starting container (port {port})...")
+        result = subprocess.run(
+            ['docker-compose', 'up', '-d', '--build'],
             env=env,
             capture_output=True,
             text=True,
             timeout=300
         )
         
-        if build_result.returncode != 0:
-            print_error(f"Docker build failed: {build_result.stderr}")
-            print_info("Will try to start with existing image or pull...")
-        else:
-            print_success("Docker image built successfully")
-        
-        # Start containers
-        result = subprocess.run(
-            ['docker-compose', 'up', '-d'],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
         if result.returncode != 0:
             error_msg = result.stderr
             print_error(f"Docker deployment failed!")
-            print_error(f"Error: {error_msg[:500]}")
+            print_error(f"Error output:\n{error_msg[:800]}")
             
             # Check for common Docker issues
             if 'docker-credential' in error_msg.lower():
@@ -309,25 +295,42 @@ def deploy_docker(port: int) -> bool:
                             # Retry deployment
                             print_info("Retrying Docker deployment...")
                             retry_result = subprocess.run(
-                                ['docker-compose', 'up', '-d'],
+                                ['docker-compose', 'up', '-d', '--build'],
                                 env=env,
                                 capture_output=True,
                                 text=True,
-                                timeout=120
+                                timeout=300
                             )
                             
                             if retry_result.returncode == 0:
                                 print_success("Docker containers started after fix")
                                 return True
+                            else:
+                                print_error(f"Retry failed: {retry_result.stderr[:500]}")
                 except Exception as fix_error:
                     print_error(f"Fix attempt failed: {fix_error}")
             
+            # Show docker-compose logs for debugging
+            print_info("\nTrying to get container logs...")
+            logs_result = subprocess.run(
+                ['docker-compose', 'logs', '--tail=50'],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if logs_result.returncode == 0 and logs_result.stdout:
+                print_info("Recent container logs:")
+                print(logs_result.stdout[:1000])
+            
             return False
         
-        print_success("Docker containers started")
+        print_success("Docker containers started successfully")
+        print_info("Container is building from local Dockerfile and using host network")
         return True
     except subprocess.TimeoutExpired:
-        print_error("Docker deployment timed out")
+        print_error("Docker deployment timed out (>300s)")
+        print_info("This might indicate a slow build or network issue")
         return False
     except Exception as e:
         print_error(f"Docker deployment failed: {e}")
