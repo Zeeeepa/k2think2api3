@@ -1,0 +1,267 @@
+# K2Think API Proxy - Configuration File
+# Copy this file to config.yaml and customize for your environment
+
+# =============================================================================
+# Server Configuration
+# =============================================================================
+server:
+  host: "0.0.0.0"
+  port: 8001
+  workers: 4
+  timeout: 300  # seconds
+  keepalive_timeout: 65
+  log_level: "info"  # debug, info, warning, error, critical
+
+# =============================================================================
+# API Configuration
+# =============================================================================
+api:
+  # OpenAI API compatibility
+  api_prefix: "/v1"
+  enable_cors: true
+  cors_origins:
+    - "*"
+  
+  # Authentication (optional)
+  require_api_key: false
+  api_keys:
+    - "sk-your-api-key-here"
+  
+  # Rate Limiting
+  rate_limiting:
+    enabled: false
+    requests_per_minute: 60
+    burst_size: 10
+
+# =============================================================================
+# K2Think Backend Configuration
+# =============================================================================
+k2think:
+  base_url: "https://www.k2think.ai"
+  api_endpoint: "https://www.k2think.ai/api/inference/v1/chat/completions"
+  
+  # Token Management
+  tokens:
+    auto_refresh: true
+    refresh_interval: 3600  # seconds (1 hour)
+    min_valid_tokens: 2
+    max_retries: 3
+    retry_on_failure: true
+  
+  # Request Configuration
+  requests:
+    timeout: 120  # seconds
+    max_retries: 3
+    retry_delay: 1  # seconds (exponential backoff)
+    connect_timeout: 10
+    read_timeout: 120
+
+# =============================================================================
+# Error Handling & Fallback Configuration
+# =============================================================================
+error_handling:
+  # Automatic Fallback
+  enable_fallback: true
+  fallback_on_errors:
+    - "token_expired"
+    - "token_invalid"
+    - "rate_limit_exceeded"
+    - "server_error"
+  
+  # Circuit Breaker Pattern
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5  # failures before opening circuit
+    success_threshold: 2  # successes to close circuit
+    timeout: 60  # seconds before attempting recovery
+  
+  # Retry Policy
+  retry_policy:
+    max_attempts: 3
+    backoff_multiplier: 2  # exponential backoff
+    max_backoff: 60  # seconds
+    retry_on_status_codes:
+      - 429  # Rate limit
+      - 500  # Internal server error
+      - 502  # Bad gateway
+      - 503  # Service unavailable
+      - 504  # Gateway timeout
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  # File Logging
+  file:
+    enabled: true
+    path: "logs/k2think.log"
+    max_size: 100  # MB
+    backup_count: 10
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Request/Response Logging
+  requests:
+    enabled: true
+    log_request_body: true
+    log_response_body: false  # Can be large
+    max_body_length: 1000  # characters
+  
+  # Error Logging
+  errors:
+    enabled: true
+    include_traceback: true
+    notify_on_critical: false
+
+# =============================================================================
+# Monitoring & Metrics
+# =============================================================================
+monitoring:
+  # Prometheus Metrics
+  prometheus:
+    enabled: true
+    endpoint: "/metrics"
+    include_request_duration: true
+    include_token_stats: true
+    include_error_counts: true
+  
+  # Health Checks
+  health:
+    enabled: true
+    liveness_endpoint: "/health/live"
+    readiness_endpoint: "/health/ready"
+    startup_endpoint: "/health/startup"
+    check_token_validity: true
+    check_backend_connectivity: true
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+network:
+  # Proxy Settings
+  proxy:
+    enabled: false
+    http_proxy: ""  # e.g., http://proxy.example.com:8080
+    https_proxy: ""
+    no_proxy: "localhost,127.0.0.1"
+  
+  # Connection Pooling
+  connection_pool:
+    max_connections: 100
+    max_keepalive_connections: 20
+    keepalive_expiry: 5  # seconds
+
+# =============================================================================
+# Feature Flags
+# =============================================================================
+features:
+  # Streaming Support
+  streaming:
+    enabled: true
+    chunk_size: 1024
+    flush_interval: 0.1  # seconds
+  
+  # Function Calling / Tools
+  function_calling:
+    enabled: true
+    max_parallel_calls: 5
+    timeout_per_call: 30  # seconds
+  
+  # Vision / Image Upload
+  vision:
+    enabled: true
+    max_image_size: 10  # MB
+    supported_formats:
+      - "image/jpeg"
+      - "image/png"
+      - "image/gif"
+      - "image/webp"
+  
+  # Embeddings
+  embeddings:
+    enabled: true
+    default_model: "text-embedding-ada-002"
+
+# =============================================================================
+# Model Configuration
+# =============================================================================
+models:
+  default: "k2-think"
+  available:
+    - id: "k2-think"
+      name: "K2-Think"
+      description: "MBZUAI K2-Think reasoning model"
+      max_tokens: 32768
+      supports_streaming: true
+      supports_functions: true
+      supports_vision: true
+      pricing:
+        prompt_tokens: 0.0
+        completion_tokens: 0.0
+    
+    - id: "gpt-4"
+      name: "GPT-4 (K2Think Backend)"
+      description: "Alias for K2-Think model"
+      alias_for: "k2-think"
+    
+    - id: "gpt-3.5-turbo"
+      name: "GPT-3.5 Turbo (K2Think Backend)"
+      description: "Alias for K2-Think model"
+      alias_for: "k2-think"
+
+# =============================================================================
+# Security Configuration
+# =============================================================================
+security:
+  # API Key Validation
+  api_key:
+    enabled: false
+    header_name: "Authorization"
+    prefix: "Bearer "
+  
+  # Request Validation
+  validation:
+    max_request_size: 10  # MB
+    max_tokens_per_request: 32768
+    max_messages_per_request: 100
+  
+  # Rate Limiting by IP
+  ip_rate_limit:
+    enabled: false
+    requests_per_minute: 60
+    whitelist:
+      - "127.0.0.1"
+      - "::1"
+
+# =============================================================================
+# Performance Optimization
+# =============================================================================
+performance:
+  # Caching
+  cache:
+    enabled: false
+    backend: "memory"  # memory, redis
+    ttl: 300  # seconds
+    max_size: 1000  # entries
+  
+  # Request Batching
+  batching:
+    enabled: false
+    max_batch_size: 10
+    max_wait_time: 0.1  # seconds
+  
+  # Async Processing
+  async:
+    enabled: true
+    max_concurrent_requests: 100
+    queue_size: 1000
+
+# =============================================================================
+# Development/Debug Settings
+# =============================================================================
+development:
+  debug_mode: false
+  reload_on_change: false
+  enable_profiling: false
+  log_sql_queries: false
+  pretty_json_logs: true
+

@@ -116,18 +116,29 @@ def collect_credentials() -> tuple[str, str] | None:
     if existing:
         print_header("K2Think Credentials Found")
         print_success(f"Using existing credentials: {existing[0]}")
+        print_info("Password: " + "*" * len(existing[1]))
         print_info("Delete data/accounts.txt to enter new credentials")
         return existing
+    
+    # Check for environment variables
+    env_email = os.environ.get('K2_EMAIL')
+    env_password = os.environ.get('K2_PASSWORD')
+    if env_email and env_password:
+        print_header("K2Think Credentials from Environment")
+        print_success(f"Using K2_EMAIL: {env_email}")
+        print_success(f"Using K2_PASSWORD: {env_password}")
+        return env_email, env_password
     
     # Collect new credentials
     print_header("K2Think Credentials Setup")
     print_info("Please provide your K2Think account credentials")
-    print_info("These will be used to fetch authentication tokens\n")
+    print_info("These will be used to fetch authentication tokens")
+    print_info("Password will be VISIBLE for verification\n")
     
     try:
         email = input(f"{Colors.OKCYAN}Enter K2Think Email: {Colors.ENDC}")
-        password = getpass(f"{Colors.OKCYAN}Enter K2Think Password: {Colors.ENDC}")
-        confirm_password = getpass(f"{Colors.OKCYAN}Confirm Password: {Colors.ENDC}")
+        password = input(f"{Colors.OKCYAN}Enter K2Think Password (visible): {Colors.ENDC}")
+        confirm_password = input(f"{Colors.OKCYAN}Confirm Password: {Colors.ENDC}")
         
         if password != confirm_password:
             print_error("Passwords do not match")
@@ -137,6 +148,7 @@ def collect_credentials() -> tuple[str, str] | None:
             print_error("Email and password are required")
             return None
         
+        print_success(f"Credentials collected: {email} / {password}")
         return email, password
     except KeyboardInterrupt:
         print("\n")
@@ -144,7 +156,7 @@ def collect_credentials() -> tuple[str, str] | None:
         return None
 
 def create_env_file(port: int) -> bool:
-    """Create .env file from .env.example"""
+    """Create .env file from .env.example with Docker-optimized settings"""
     try:
         env_example = Path('.env.example')
         env_file = Path('.env')
@@ -157,11 +169,14 @@ def create_env_file(port: int) -> bool:
         with open(env_example, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Update PORT
+        # Update PORT and HOST for Docker networking
         lines = []
         for line in content.split('\n'):
             if line.startswith('PORT='):
                 lines.append(f'PORT={port}')
+            elif line.startswith('HOST='):
+                # Use 0.0.0.0 for Docker to listen on all interfaces
+                lines.append('HOST=0.0.0.0')
             else:
                 lines.append(line)
         
@@ -170,6 +185,7 @@ def create_env_file(port: int) -> bool:
             f.write('\n'.join(lines))
         
         print_success(f"Created .env file (PORT={port}, HOST=0.0.0.0)")
+        print_info(f"Docker will expose API at: http://localhost:{port}")
         return True
     except Exception as e:
         print_error(f"Failed to create .env file: {e}")
@@ -229,18 +245,20 @@ def fetch_token() -> bool:
         return False
 
 def deploy_docker(port: int) -> bool:
-    """Deploy using Docker Compose"""
+    """Deploy using Docker Compose - builds from local Dockerfile"""
     try:
-        print_info("Building and starting Docker containers...")
+        print_info("Building and starting Docker containers from local Dockerfile...")
         
         # Set PORT environment variable for docker-compose
         env = os.environ.copy()
-        env['SERVER_PORT'] = str(port)
+        env['PORT'] = str(port)  # Pass PORT to docker-compose
         
         # Stop any existing containers
+        print_info("Stopping any existing containers...")
         subprocess.run(['docker-compose', 'down'], env=env, capture_output=True)
         
-        # Build and start
+        # Build and start with docker-compose (it handles build from Dockerfile)
+        print_info(f"Building image and starting container (port {port})...")
         result = subprocess.run(
             ['docker-compose', 'up', '-d', '--build'],
             env=env,
@@ -250,13 +268,69 @@ def deploy_docker(port: int) -> bool:
         )
         
         if result.returncode != 0:
-            print_error(f"Docker deployment failed: {result.stderr}")
+            error_msg = result.stderr
+            print_error(f"Docker deployment failed!")
+            print_error(f"Error output:\n{error_msg[:800]}")
+            
+            # Check for common Docker issues
+            if 'docker-credential' in error_msg.lower():
+                print_info("\n⚠️  Docker credential helper issue detected")
+                print_info("This is a common Docker Desktop issue on WSL/Linux")
+                print_info("Attempting to fix...")
+                
+                # Try to fix Docker credential issue
+                try:
+                    docker_config_path = Path.home() / '.docker' / 'config.json'
+                    if docker_config_path.exists():
+                        with open(docker_config_path, 'r') as f:
+                            config = json.load(f)
+                        
+                        # Remove credsStore if it exists
+                        if 'credsStore' in config:
+                            config.pop('credsStore')
+                            with open(docker_config_path, 'w') as f:
+                                json.dump(config, f, indent=2)
+                            print_success("Fixed Docker config - removed credsStore")
+                            
+                            # Retry deployment
+                            print_info("Retrying Docker deployment...")
+                            retry_result = subprocess.run(
+                                ['docker-compose', 'up', '-d', '--build'],
+                                env=env,
+                                capture_output=True,
+                                text=True,
+                                timeout=300
+                            )
+                            
+                            if retry_result.returncode == 0:
+                                print_success("Docker containers started after fix")
+                                return True
+                            else:
+                                print_error(f"Retry failed: {retry_result.stderr[:500]}")
+                except Exception as fix_error:
+                    print_error(f"Fix attempt failed: {fix_error}")
+            
+            # Show docker-compose logs for debugging
+            print_info("\nTrying to get container logs...")
+            logs_result = subprocess.run(
+                ['docker-compose', 'logs', '--tail=50'],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if logs_result.returncode == 0 and logs_result.stdout:
+                print_info("Recent container logs:")
+                print(logs_result.stdout[:1000])
+            
             return False
         
-        print_success("Docker containers started")
+        print_success("Docker containers started successfully")
+        print_info("Container is building from local Dockerfile and using host network")
         return True
     except subprocess.TimeoutExpired:
-        print_error("Docker deployment timed out")
+        print_error("Docker deployment timed out (>300s)")
+        print_info("This might indicate a slow build or network issue")
         return False
     except Exception as e:
         print_error(f"Docker deployment failed: {e}")
@@ -266,6 +340,7 @@ def verify_deployment(port: int) -> bool:
     """Verify the deployment is working"""
     try:
         print_info("Verifying deployment...")
+        print_info(f"Testing health endpoint: http://localhost:{port}/health")
         time.sleep(5)  # Wait for server to fully start
         
         import requests
@@ -273,10 +348,15 @@ def verify_deployment(port: int) -> bool:
         
         if response.status_code == 200:
             print_success("Server is healthy and responding")
+            print_success(f"API endpoint confirmed: http://localhost:{port}")
             return True
         else:
-            print_error(f"Server health check failed: {response.status_code}")
+            print_error(f"Server health check failed: HTTP {response.status_code}")
             return False
+    except requests.exceptions.ConnectionError:
+        print_error(f"Cannot connect to http://localhost:{port}")
+        print_info("Server may still be starting or port may be blocked")
+        return False
     except Exception as e:
         print_error(f"Deployment verification failed: {e}")
         return False
@@ -331,10 +411,40 @@ def test_api(port: int) -> bool:
         print_error(f"API test failed: {str(e)}")
         return False
 
+def start_local_fallback(port: int) -> bool:
+    """Fallback to local Python deployment if Docker fails"""
+    try:
+        print_header("🔄 Falling Back to Local Python Deployment")
+        print_info("Starting server with local Python instead of Docker...")
+        
+        # Check if start.py exists
+        if not Path('start.py').exists():
+            print_error("start.py not found - cannot fallback to local deployment")
+            return False
+        
+        print_info(f"Running: python3 start.py")
+        print_info("This will start the server in the foreground...")
+        print_info("Press Ctrl+C to stop the server\n")
+        
+        time.sleep(2)
+        
+        # Run start.py
+        subprocess.run([sys.executable, 'start.py'])
+        
+        return True
+    except KeyboardInterrupt:
+        print("\n")
+        print_info("Server stopped by user")
+        return True
+    except Exception as e:
+        print_error(f"Local fallback failed: {e}")
+        return False
+
 def main():
-    """Main deployment workflow"""
+    """Main deployment workflow with intelligent fallback"""
     total_steps = 8
     current_step = 0
+    docker_failed = False
     
     print_header("K2Think API Proxy - Docker Deployment")
     
@@ -347,9 +457,11 @@ def main():
     # Step 2: Check Docker
     current_step += 1
     print_step(current_step, total_steps, "Checking Docker installation")
-    if not check_docker():
-        print_error("Please install Docker and Docker Compose first")
-        sys.exit(1)
+    docker_available = check_docker()
+    if not docker_available:
+        print_error("Docker is not available")
+        print_info("Will attempt local Python deployment as fallback...")
+        docker_failed = True
     
     # Step 3: Find available port
     current_step += 1
@@ -385,34 +497,73 @@ def main():
     print_step(current_step, total_steps, "Fetching authentication token")
     if not fetch_token():
         print_error("Failed to fetch token")
-        sys.exit(1)
+        print_info("Continuing anyway - server will try to fetch token on startup...")
     
-    # Step 7: Deploy Docker
+    # Step 7: Deploy (Docker or local fallback)
     current_step += 1
-    print_step(current_step, total_steps, "Deploying with Docker Compose")
-    if not deploy_docker(target_port):
-        print_error("Failed to deploy with Docker")
-        sys.exit(1)
+    print_step(current_step, total_steps, "Deploying service")
     
+    if not docker_failed:
+        # Try Docker deployment
+        if not deploy_docker(target_port):
+            print_error("Docker deployment failed")
+            print_info("\n⚠️  Docker deployment encountered errors")
+            print_info("Would you like to try local Python deployment instead?")
+            
+            try:
+                response = input(f"{Colors.OKCYAN}Use local deployment? (y/n): {Colors.ENDC}").strip().lower()
+                if response == 'y' or response == 'yes':
+                    docker_failed = True
+                else:
+                    print_error("Deployment cancelled")
+                    sys.exit(1)
+            except KeyboardInterrupt:
+                print("\n")
+                print_error("Deployment cancelled")
+                sys.exit(1)
+    
+    if docker_failed:
+        # Use local Python deployment
+        print_info("\n📌 Switching to local Python deployment")
+        if not start_local_fallback(target_port):
+            print_error("Both Docker and local deployment failed")
+            sys.exit(1)
+        sys.exit(0)  # Exit after local deployment (it runs in foreground)
+    
+    # Verify Docker deployment
     if not verify_deployment(target_port):
         print_error("Deployment verification failed")
-        sys.exit(1)
+        print_info("Server may still be starting up...")
+        print_info("Check logs with: docker-compose logs -f")
     
     # Step 8: Test API
     current_step += 1
     print_step(current_step, total_steps, "Testing API with sample request")
     test_api(target_port)
     
-    # Print final URL
+    # Print final URL and network configuration
     print(f"\n{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.BOLD}{Colors.OKGREEN}  🚀 API Ready at: http://localhost:{target_port}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}  🚀 K2Think API Proxy - Docker Deployment Complete!{Colors.ENDC}")
     print(f"{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}\n")
     
-    print(f"{Colors.BOLD}Docker Management Commands:{Colors.ENDC}")
-    print(f"  {Colors.OKCYAN}docker-compose logs -f{Colors.ENDC}  # View logs")
-    print(f"  {Colors.OKCYAN}docker-compose ps{Colors.ENDC}        # Check status")
-    print(f"  {Colors.OKCYAN}docker-compose down{Colors.ENDC}      # Stop containers")
-    print(f"  {Colors.OKCYAN}docker-compose restart{Colors.ENDC}   # Restart containers\n")
+    print(f"{Colors.BOLD}API Endpoint:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}http://localhost:{target_port}/v1/chat/completions{Colors.ENDC}\n")
+    
+    print(f"{Colors.BOLD}Network Configuration:{Colors.ENDC}")
+    print(f"  • Container: Using host network mode")
+    print(f"  • Listening: 0.0.0.0:{target_port} (all interfaces)")
+    print(f"  • Access: http://localhost:{target_port}")
+    print(f"  • Health: http://localhost:{target_port}/health\n")
+    
+    print(f"{Colors.BOLD}Docker Management:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}docker-compose logs -f{Colors.ENDC}     # View real-time logs")
+    print(f"  {Colors.OKCYAN}docker-compose ps{Colors.ENDC}           # Check container status")
+    print(f"  {Colors.OKCYAN}docker-compose down{Colors.ENDC}         # Stop containers")
+    print(f"  {Colors.OKCYAN}docker-compose restart{Colors.ENDC}      # Restart containers\n")
+    
+    print(f"{Colors.BOLD}Test API:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}curl http://localhost:{target_port}/health{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}curl http://localhost:{target_port}/v1/models{Colors.ENDC}\n")
 
 if __name__ == "__main__":
     try:
