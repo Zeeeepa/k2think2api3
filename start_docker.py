@@ -156,7 +156,7 @@ def collect_credentials() -> tuple[str, str] | None:
         return None
 
 def create_env_file(port: int) -> bool:
-    """Create .env file from .env.example"""
+    """Create .env file from .env.example with Docker-optimized settings"""
     try:
         env_example = Path('.env.example')
         env_file = Path('.env')
@@ -169,11 +169,14 @@ def create_env_file(port: int) -> bool:
         with open(env_example, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Update PORT
+        # Update PORT and HOST for Docker networking
         lines = []
         for line in content.split('\n'):
             if line.startswith('PORT='):
                 lines.append(f'PORT={port}')
+            elif line.startswith('HOST='):
+                # Use 0.0.0.0 for Docker to listen on all interfaces
+                lines.append('HOST=0.0.0.0')
             else:
                 lines.append(line)
         
@@ -182,6 +185,7 @@ def create_env_file(port: int) -> bool:
             f.write('\n'.join(lines))
         
         print_success(f"Created .env file (PORT={port}, HOST=0.0.0.0)")
+        print_info(f"Docker will expose API at: http://localhost:{port}")
         return True
     except Exception as e:
         print_error(f"Failed to create .env file: {e}")
@@ -333,6 +337,7 @@ def verify_deployment(port: int) -> bool:
     """Verify the deployment is working"""
     try:
         print_info("Verifying deployment...")
+        print_info(f"Testing health endpoint: http://localhost:{port}/health")
         time.sleep(5)  # Wait for server to fully start
         
         import requests
@@ -340,10 +345,15 @@ def verify_deployment(port: int) -> bool:
         
         if response.status_code == 200:
             print_success("Server is healthy and responding")
+            print_success(f"API endpoint confirmed: http://localhost:{port}")
             return True
         else:
-            print_error(f"Server health check failed: {response.status_code}")
+            print_error(f"Server health check failed: HTTP {response.status_code}")
             return False
+    except requests.exceptions.ConnectionError:
+        print_error(f"Cannot connect to http://localhost:{port}")
+        print_info("Server may still be starting or port may be blocked")
+        return False
     except Exception as e:
         print_error(f"Deployment verification failed: {e}")
         return False
@@ -528,16 +538,29 @@ def main():
     print_step(current_step, total_steps, "Testing API with sample request")
     test_api(target_port)
     
-    # Print final URL
+    # Print final URL and network configuration
     print(f"\n{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.BOLD}{Colors.OKGREEN}  🚀 API Ready at: http://localhost:{target_port}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.OKGREEN}  🚀 K2Think API Proxy - Docker Deployment Complete!{Colors.ENDC}")
     print(f"{Colors.BOLD}{Colors.OKGREEN}{'='*70}{Colors.ENDC}\n")
     
-    print(f"{Colors.BOLD}Docker Management Commands:{Colors.ENDC}")
-    print(f"  {Colors.OKCYAN}docker-compose logs -f{Colors.ENDC}  # View logs")
-    print(f"  {Colors.OKCYAN}docker-compose ps{Colors.ENDC}        # Check status")
-    print(f"  {Colors.OKCYAN}docker-compose down{Colors.ENDC}      # Stop containers")
-    print(f"  {Colors.OKCYAN}docker-compose restart{Colors.ENDC}   # Restart containers\n")
+    print(f"{Colors.BOLD}API Endpoint:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}http://localhost:{target_port}/v1/chat/completions{Colors.ENDC}\n")
+    
+    print(f"{Colors.BOLD}Network Configuration:{Colors.ENDC}")
+    print(f"  • Container: Using host network mode")
+    print(f"  • Listening: 0.0.0.0:{target_port} (all interfaces)")
+    print(f"  • Access: http://localhost:{target_port}")
+    print(f"  • Health: http://localhost:{target_port}/health\n")
+    
+    print(f"{Colors.BOLD}Docker Management:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}docker-compose logs -f{Colors.ENDC}     # View real-time logs")
+    print(f"  {Colors.OKCYAN}docker-compose ps{Colors.ENDC}           # Check container status")
+    print(f"  {Colors.OKCYAN}docker-compose down{Colors.ENDC}         # Stop containers")
+    print(f"  {Colors.OKCYAN}docker-compose restart{Colors.ENDC}      # Restart containers\n")
+    
+    print(f"{Colors.BOLD}Test API:{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}curl http://localhost:{target_port}/health{Colors.ENDC}")
+    print(f"  {Colors.OKCYAN}curl http://localhost:{target_port}/v1/models{Colors.ENDC}\n")
 
 if __name__ == "__main__":
     try:
