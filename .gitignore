@@ -11,3 +11,10 @@ accounts.txt
 tokens.txt.backup
 *.pyc
 *.log
+
+# Multi-instance deployment directories
+instances/
+!instances/.gitkeep
+instances/backups/
+.instance-*.lock
+instances/instances.json.backup

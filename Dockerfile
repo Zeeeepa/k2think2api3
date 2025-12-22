@@ -37,12 +37,12 @@ mkdir -p /app/data\n\
 exec "$@"' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
-# 暴露端口
+# 暴露端口 (documentation only - actual port controlled by .env and docker-compose)
 EXPOSE 8001
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8001/health || exit 1
+# 健康检查removed from Dockerfile - now defined in docker-compose.yml
+# This allows dynamic port configuration per instance
+# The healthcheck in docker-compose.yml uses ${PORT} variable for flexibility
 
 # 设置entrypoint和默认命令
 ENTRYPOINT ["/app/entrypoint.sh"]

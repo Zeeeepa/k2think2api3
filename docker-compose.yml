@@ -4,7 +4,12 @@ services:
   k2think-api:
     image: julienol/k2think2api:latest
     container_name: k2think-api
-    network_mode: "host"
+    # Use bridge networking for multi-instance support
+    # Host networking removed to allow multiple instances on different ports
+    ports:
+      - "${PORT:-8001}:${PORT:-8001}"
+    networks:
+      - k2think-network
     volumes:
       # 使用目录挂载而非文件挂载，避免文件锁定问题
       - ./data:/app/data
@@ -22,14 +27,27 @@ services:
       # 更新配置文件路径指向data目录
       - TOKENS_FILE=/app/data/tokens.txt
       - ACCOUNTS_FILE=/app/data/accounts.txt
+      - PORT=${PORT:-8001}
+    # DNS configuration for reliable resolution
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: unless-stopped
-    # 健康检查
+    # 健康检查 - uses dynamic PORT variable
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:$${PORT:-8001}/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 40s
+
+# Bridge network for proper multi-instance isolation
+networks:
+  k2think-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
 
 # 可选：使用命名卷（推荐用于生产环境）
 # volumes:

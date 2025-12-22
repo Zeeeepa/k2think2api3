@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  {{INSTANCE_NAME}}:
+    image: julienol/k2think2api:latest
+    container_name: k2think-{{INSTANCE_NAME}}
+    ports:
+      - "{{PORT}}:{{PORT}}"
+    networks:
+      - k2think-network-{{INSTANCE_NAME}}
+    volumes:
+      - {{DATA_DIR}}:/app/data
+    env_file:
+      - {{INSTANCE_DIR}}/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=utf-8
+      - PYTHONLEGACYWINDOWSSTDIO=0
+      - LC_ALL=C.UTF-8
+      - LANG=C.UTF-8
+      - TOKENS_FILE=/app/data/tokens.txt
+      - ACCOUNTS_FILE=/app/data/accounts.txt
+      - PORT={{PORT}}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:{{PORT}}/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  k2think-network-{{INSTANCE_NAME}}:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.{{SUBNET_OCTET}}.0/24
+
